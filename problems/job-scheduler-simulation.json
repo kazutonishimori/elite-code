@@ -1,0 +1,222 @@
+{
+  "schemaVersion": 1,
+  "id": "job-scheduler-simulation",
+  "title": "Job Scheduler",
+  "type": "simulation",
+  "difficulty": "hard",
+  "tags": [
+    "scheduling",
+    "heap",
+    "topological-sort",
+    "simulation"
+  ],
+  "summary": "Simulate a batch job scheduler for a data platform, adding the features real orchestrators need.",
+  "starterCode": "class Scheduler:\n    def __init__(self, workers: int = 1):\n        pass\n\n    def submit(self, job_id: str, duration: int) -> None:\n        pass\n\n    def run(self) -> list[tuple[str, int, int]]:\n        pass\n",
+  "estimatedMinutes": 75,
+  "companies": [
+    "Airflow (Astronomer)",
+    "Databricks",
+    "Uber"
+  ],
+  "topics": [
+    "orchestration"
+  ],
+  "stages": [
+    {
+      "id": "worker-pool",
+      "title": "Worker pool",
+      "requirement": "We're simulating the scheduler behind our batch platform. Implement\n`Scheduler(workers=1)`:\n\n- `submit(job_id, duration)` queues a job (`duration >= 1` time units). A duplicate\n  `job_id` raises `ValueError`.\n- `run()` simulates execution from time 0 and returns `(job_id, start, end)` for every\n  job, sorted by `start`, then `job_id`.\n\nJobs are assigned in **submission order**. Each job goes to the worker that becomes free\n**earliest**, and on ties the lowest-numbered worker (workers are numbered `0..workers-1`).\nA worker runs one job at a time.\n\n```python\ns = Scheduler(workers=2)\ns.submit(\"a\", 3); s.submit(\"b\", 2); s.submit(\"c\", 1)\ns.run()  # -> [(\"a\", 0, 3), (\"b\", 0, 2), (\"c\", 2, 3)]\n```",
+      "visibleTests": [
+        {
+          "name": "test_two_workers",
+          "code": "def test_two_workers():\n    s = Scheduler(workers=2)\n    s.submit(\"a\", 3)\n    s.submit(\"b\", 2)\n    s.submit(\"c\", 1)\n    assert s.run() == [(\"a\", 0, 3), (\"b\", 0, 2), (\"c\", 2, 3)]\n"
+        },
+        {
+          "name": "test_single_worker_is_sequential",
+          "code": "def test_single_worker_is_sequential():\n    s = Scheduler()\n    s.submit(\"x\", 2)\n    s.submit(\"y\", 5)\n    assert s.run() == [(\"x\", 0, 2), (\"y\", 2, 7)]\n"
+        }
+      ],
+      "hiddenTests": [
+        {
+          "name": "test_empty",
+          "code": "def test_empty():\n    assert Scheduler(workers=3).run() == []\n"
+        },
+        {
+          "name": "test_duplicate_id",
+          "code": "def test_duplicate_id():\n    s = Scheduler()\n    s.submit(\"a\", 1)\n    try:\n        s.submit(\"a\", 2)\n    except ValueError:\n        return\n    raise AssertionError(\"expected ValueError\")\n"
+        },
+        {
+          "name": "test_sort_ties_by_job_id",
+          "code": "def test_sort_ties_by_job_id():\n    s = Scheduler(workers=3)\n    for job in [\"c\", \"a\", \"b\"]:\n        s.submit(job, 1)\n    assert s.run() == [(\"a\", 0, 1), (\"b\", 0, 1), (\"c\", 0, 1)]\n"
+        },
+        {
+          "name": "test_more_workers_than_jobs",
+          "code": "def test_more_workers_than_jobs():\n    s = Scheduler(workers=10)\n    s.submit(\"only\", 4)\n    assert s.run() == [(\"only\", 0, 4)]\n"
+        },
+        {
+          "name": "test_large",
+          "code": "def test_large():\n    s = Scheduler(workers=4)\n    for i in range(20_000):\n        s.submit(f\"j{i:05d}\", (i % 5) + 1)\n    out = s.run()\n    assert len(out) == 20_000\n    # 60,000 units of work on 4 workers: greedy assignment finishes at 15,002.\n    assert max(end for _, _, end in out) == 15_002\n"
+        }
+      ],
+      "hints": [
+        "At each step you need the worker that frees up earliest. Which data structure gives you the minimum quickly?",
+        "A min-heap of `(free_at, worker_id)` handles both rules: earliest free, then lowest id."
+      ],
+      "solution": {
+        "code": "import heapq\n\n\nclass Scheduler:\n    def __init__(self, workers: int = 1):\n        self.workers = workers\n        self._jobs: list[tuple[str, int]] = []\n        self._ids: set[str] = set()\n\n    def submit(self, job_id: str, duration: int) -> None:\n        if job_id in self._ids:\n            raise ValueError(f\"duplicate job id {job_id!r}\")\n        self._ids.add(job_id)\n        self._jobs.append((job_id, duration))\n\n    def run(self) -> list[tuple[str, int, int]]:\n        free = [(0, w) for w in range(self.workers)]  # (free_at, worker)\n        out = []\n        for job_id, duration in self._jobs:\n            start, worker = heapq.heappop(free)\n            out.append((job_id, start, start + duration))\n            heapq.heappush(free, (start + duration, worker))\n        return sorted(out, key=lambda r: (r[1], r[0]))\n",
+        "explanation": "A min-heap of `(free_at, worker)` assigns each job, in submission order, to the\nearliest-available worker. The tuple ordering breaks ties by worker number for free.\nEach assignment is O(log w). Sorting the output at the end matches the required\norder.",
+        "timeComplexity": "O(n log w + n log n)",
+        "spaceComplexity": "O(n + w)"
+      }
+    },
+    {
+      "id": "dependencies",
+      "title": "Dependencies",
+      "requirement": "Nice. Real pipelines have dependencies. `submit` gains `depends_on=()`, an iterable of\njob ids that must **finish** before this job can **start**.\n\n- Jobs become **ready** when all their dependencies have finished. Whenever workers are\n  free, ready jobs are assigned in **submission order**, to free workers in increasing\n  worker number. A job that becomes ready at time `t` can start at `t`.\n- `run()` raises `ValueError` if a dependency names an unknown job or the dependencies\n  contain a cycle. Dependencies may be submitted in any order.\n- Output is unchanged: `(job_id, start, end)` sorted by start, then id.\n\n```python\ns = Scheduler(workers=2)\ns.submit(\"extract\", 2)\ns.submit(\"transform\", 3, depends_on=[\"extract\"])\ns.submit(\"report\", 1)\ns.run()  # -> [(\"extract\", 0, 2), (\"report\", 0, 1), (\"transform\", 2, 5)]\n```",
+      "visibleTests": [
+        {
+          "name": "test_dependency_waits",
+          "code": "def test_dependency_waits():\n    s = Scheduler(workers=2)\n    s.submit(\"extract\", 2)\n    s.submit(\"transform\", 3, depends_on=[\"extract\"])\n    s.submit(\"report\", 1)\n    assert s.run() == [(\"extract\", 0, 2), (\"report\", 0, 1), (\"transform\", 2, 5)]\n"
+        },
+        {
+          "name": "test_cycle_raises",
+          "code": "def test_cycle_raises():\n    s = Scheduler()\n    s.submit(\"a\", 1, depends_on=[\"b\"])\n    s.submit(\"b\", 1, depends_on=[\"a\"])\n    try:\n        s.run()\n    except ValueError:\n        return\n    raise AssertionError(\"expected ValueError\")\n"
+        }
+      ],
+      "hiddenTests": [
+        {
+          "name": "test_waits_for_slowest_dependency",
+          "code": "def test_waits_for_slowest_dependency():\n    s = Scheduler(workers=3)\n    s.submit(\"fast\", 1)\n    s.submit(\"slow\", 5)\n    s.submit(\"join\", 1, depends_on=[\"fast\", \"slow\"])\n    assert s.run() == [(\"fast\", 0, 1), (\"slow\", 0, 5), (\"join\", 5, 6)]\n"
+        },
+        {
+          "name": "test_ready_jobs_in_submission_order",
+          "code": "def test_ready_jobs_in_submission_order():\n    s = Scheduler(workers=1)\n    s.submit(\"root\", 1)\n    s.submit(\"z\", 1, depends_on=[\"root\"])\n    s.submit(\"a\", 1, depends_on=[\"root\"])\n    assert s.run() == [(\"root\", 0, 1), (\"z\", 1, 2), (\"a\", 2, 3)]\n"
+        },
+        {
+          "name": "test_dependency_submitted_later",
+          "code": "def test_dependency_submitted_later():\n    s = Scheduler(workers=2)\n    s.submit(\"b\", 1, depends_on=[\"a\"])\n    s.submit(\"a\", 2)\n    assert s.run() == [(\"a\", 0, 2), (\"b\", 2, 3)]\n"
+        },
+        {
+          "name": "test_unknown_dependency",
+          "code": "def test_unknown_dependency():\n    s = Scheduler()\n    s.submit(\"a\", 1, depends_on=[\"ghost\"])\n    try:\n        s.run()\n    except ValueError:\n        return\n    raise AssertionError(\"expected ValueError\")\n"
+        },
+        {
+          "name": "test_idle_worker_picks_up_independent_work",
+          "code": "def test_idle_worker_picks_up_independent_work():\n    s = Scheduler(workers=2)\n    s.submit(\"a\", 4)\n    s.submit(\"b\", 1, depends_on=[\"a\"])\n    s.submit(\"c\", 1)\n    s.submit(\"d\", 1)\n    assert s.run() == [(\"a\", 0, 4), (\"c\", 0, 1), (\"d\", 1, 2), (\"b\", 4, 5)]\n"
+        },
+        {
+          "name": "test_long_chain",
+          "code": "def test_long_chain():\n    s = Scheduler(workers=8)\n    for i in range(5_000):\n        s.submit(f\"j{i}\", 1, depends_on=[f\"j{i - 1}\"] if i else [])\n    out = s.run()\n    assert out[-1] == (\"j4999\", 4999, 5000)\n"
+        }
+      ],
+      "hints": [
+        "Assigning jobs in a fixed order no longer works. You need to simulate time: events happen when jobs finish.",
+        "Keep a min-heap of running jobs by end time, a heap of idle worker ids, and a heap of ready jobs keyed by submission index. Advance time to the next completion, free those workers and release dependents.",
+        "Validate first: unknown ids, then a topological check (Kahn's algorithm) for cycles."
+      ],
+      "solution": {
+        "code": "import heapq\nfrom collections import defaultdict\n\n\nclass Scheduler:\n    def __init__(self, workers: int = 1):\n        self.workers = workers\n        self._order: list[str] = []\n        self._jobs: dict[str, dict] = {}\n\n    def submit(self, job_id: str, duration: int, depends_on=()) -> None:\n        if job_id in self._jobs:\n            raise ValueError(f\"duplicate job id {job_id!r}\")\n        self._jobs[job_id] = {\"duration\": duration, \"deps\": tuple(depends_on), \"seq\": len(self._order)}\n        self._order.append(job_id)\n\n    def _validate(self) -> dict[str, list[str]]:\n        dependents: dict[str, list[str]] = defaultdict(list)\n        indegree = {j: 0 for j in self._jobs}\n        for job_id, job in self._jobs.items():\n            for dep in set(job[\"deps\"]):\n                if dep not in self._jobs:\n                    raise ValueError(f\"{job_id!r} depends on unknown job {dep!r}\")\n                dependents[dep].append(job_id)\n                indegree[job_id] += 1\n        frontier = [j for j, d in indegree.items() if d == 0]\n        visited = 0\n        while frontier:\n            job = frontier.pop()\n            visited += 1\n            for nxt in dependents[job]:\n                indegree[nxt] -= 1\n                if indegree[nxt] == 0:\n                    frontier.append(nxt)\n        if visited != len(self._jobs):\n            raise ValueError(\"dependency cycle detected\")\n        return dependents\n\n    def run(self) -> list[tuple[str, int, int]]:\n        dependents = self._validate()\n        waiting = {j: set(job[\"deps\"]) for j, job in self._jobs.items()}\n        ready = [job[\"seq\"] for j, job in self._jobs.items() if not waiting[j]]\n        heapq.heapify(ready)\n        idle = list(range(self.workers))\n        running: list[tuple[int, int, str]] = []  # (end, worker, job_id)\n        time = 0\n        out = []\n        while ready or running:\n            while ready and idle:\n                job_id = self._order[heapq.heappop(ready)]\n                worker = heapq.heappop(idle)\n                end = time + self._jobs[job_id][\"duration\"]\n                out.append((job_id, time, end))\n                heapq.heappush(running, (end, worker, job_id))\n            time = running[0][0]\n            while running and running[0][0] == time:\n                _, worker, job_id = heapq.heappop(running)\n                heapq.heappush(idle, worker)\n                for nxt in dependents[job_id]:\n                    waiting[nxt].discard(job_id)\n                    if not waiting[nxt]:\n                        heapq.heappush(ready, self._jobs[nxt][\"seq\"])\n        return sorted(out, key=lambda r: (r[1], r[0]))\n",
+        "explanation": "Dependencies force a real **discrete-event simulation**. Time jumps to the next job\ncompletion, completions free workers and release dependents whose last dependency\njust finished, and then idle workers take ready jobs in submission order. Stage 1's\nbehavior is the special case with no dependencies, so its tests still pass. Kahn's\nalgorithm validates the graph up front.",
+        "timeComplexity": "O((n + e) log n)",
+        "spaceComplexity": "O(n + e)"
+      }
+    },
+    {
+      "id": "retries",
+      "title": "Retries with backoff",
+      "requirement": "Jobs fail in production. Model failures deterministically:\n\n- `submit(..., fail_attempts=0, max_retries=0)`: the first `fail_attempts` attempts of the\n  job **fail**. An attempt takes the full `duration` either way.\n- The constructor takes `base_backoff=1`. After failed attempt number `k` (1-based), if the\n  job has retries left (`k <= max_retries`), it becomes ready again at\n  `failure_time + base_backoff * 2**(k-1)`. Otherwise it is **failed**, and every job that\n  depends on it, directly or transitively, is **skipped** and never runs.\n- `run()` returns only **successful** attempts as `(job_id, start, end)`.\n- New `report()` returns `{job_id: {\"status\": \"succeeded\" | \"failed\" | \"skipped\",\n  \"attempts\": n}}` for the last `run()`. Before any `run()`, it raises `RuntimeError`.\n\n```python\ns = Scheduler(workers=1, base_backoff=1)\ns.submit(\"flaky\", 2, fail_attempts=1, max_retries=1)\ns.run()      # -> [(\"flaky\", 3, 5)]   (fails 0-2, backs off 1, retries 3-5)\ns.report()   # -> {\"flaky\": {\"status\": \"succeeded\", \"attempts\": 2}}\n```",
+      "visibleTests": [
+        {
+          "name": "test_retry_after_backoff",
+          "code": "def test_retry_after_backoff():\n    s = Scheduler(workers=1, base_backoff=1)\n    s.submit(\"flaky\", 2, fail_attempts=1, max_retries=1)\n    assert s.run() == [(\"flaky\", 3, 5)]\n    assert s.report() == {\"flaky\": {\"status\": \"succeeded\", \"attempts\": 2}}\n"
+        },
+        {
+          "name": "test_failure_skips_dependents",
+          "code": "def test_failure_skips_dependents():\n    s = Scheduler(workers=2)\n    s.submit(\"load\", 1, fail_attempts=5, max_retries=1)\n    s.submit(\"model\", 1, depends_on=[\"load\"])\n    s.submit(\"dash\", 1, depends_on=[\"model\"])\n    s.submit(\"other\", 1)\n    assert s.run() == [(\"other\", 0, 1)]\n    assert s.report() == {\n        \"load\": {\"status\": \"failed\", \"attempts\": 2},\n        \"model\": {\"status\": \"skipped\", \"attempts\": 0},\n        \"dash\": {\"status\": \"skipped\", \"attempts\": 0},\n        \"other\": {\"status\": \"succeeded\", \"attempts\": 1},\n    }\n"
+        }
+      ],
+      "hiddenTests": [
+        {
+          "name": "test_exponential_backoff",
+          "description": "Attempt 1: 0-1, retry at 11; attempt 2: 11-12, retry at 12 + 20 = 32.",
+          "code": "def test_exponential_backoff():\n    s = Scheduler(workers=1, base_backoff=10)\n    s.submit(\"a\", 1, fail_attempts=2, max_retries=2)\n    assert s.run() == [(\"a\", 32, 33)]\n"
+        },
+        {
+          "name": "test_worker_does_other_work_during_backoff",
+          "code": "def test_worker_does_other_work_during_backoff():\n    s = Scheduler(workers=1, base_backoff=5)\n    s.submit(\"flaky\", 1, fail_attempts=1, max_retries=1)\n    s.submit(\"steady\", 2)\n    assert s.run() == [(\"steady\", 1, 3), (\"flaky\", 6, 7)]\n"
+        },
+        {
+          "name": "test_report_before_run",
+          "code": "def test_report_before_run():\n    try:\n        Scheduler().report()\n    except RuntimeError:\n        return\n    raise AssertionError(\"expected RuntimeError\")\n"
+        },
+        {
+          "name": "test_no_failures_report",
+          "code": "def test_no_failures_report():\n    s = Scheduler(workers=2)\n    s.submit(\"a\", 1)\n    s.submit(\"b\", 1, depends_on=[\"a\"])\n    s.run()\n    assert s.report() == {\"a\": {\"status\": \"succeeded\", \"attempts\": 1}, \"b\": {\"status\": \"succeeded\", \"attempts\": 1}}\n"
+        },
+        {
+          "name": "test_diamond_with_one_failed_branch",
+          "code": "def test_diamond_with_one_failed_branch():\n    s = Scheduler(workers=2)\n    s.submit(\"src\", 1)\n    s.submit(\"ok\", 1, depends_on=[\"src\"])\n    s.submit(\"bad\", 1, depends_on=[\"src\"], fail_attempts=1)\n    s.submit(\"sink\", 1, depends_on=[\"ok\", \"bad\"])\n    assert s.run() == [(\"src\", 0, 1), (\"ok\", 1, 2)]\n    assert s.report()[\"sink\"] == {\"status\": \"skipped\", \"attempts\": 0}\n    assert s.report()[\"bad\"] == {\"status\": \"failed\", \"attempts\": 1}\n"
+        }
+      ],
+      "hints": [
+        "A failed attempt doesn't release dependents. It either re-enters the queue later or ends the job.",
+        "Add a second heap of `(ready_at, job)` for jobs in backoff. The next event time is the earlier of the next completion and the next backoff expiry.",
+        "On permanent failure, walk the dependents graph to mark everything downstream as skipped. Record attempts per job for `report()`."
+      ],
+      "solution": {
+        "code": "import heapq\nfrom collections import defaultdict\n\n\nclass Scheduler:\n    def __init__(self, workers: int = 1, base_backoff: int = 1):\n        self.workers = workers\n        self.base_backoff = base_backoff\n        self._order: list[str] = []\n        self._jobs: dict[str, dict] = {}\n        self._report: dict[str, dict] | None = None\n\n    def submit(self, job_id: str, duration: int, depends_on=(), fail_attempts: int = 0,\n               max_retries: int = 0) -> None:\n        if job_id in self._jobs:\n            raise ValueError(f\"duplicate job id {job_id!r}\")\n        self._jobs[job_id] = {\n            \"duration\": duration,\n            \"deps\": tuple(depends_on),\n            \"fail_attempts\": fail_attempts,\n            \"max_retries\": max_retries,\n            \"seq\": len(self._order),\n        }\n        self._order.append(job_id)\n\n    def _validate(self) -> dict[str, list[str]]:\n        dependents: dict[str, list[str]] = defaultdict(list)\n        indegree = {j: 0 for j in self._jobs}\n        for job_id, job in self._jobs.items():\n            for dep in set(job[\"deps\"]):\n                if dep not in self._jobs:\n                    raise ValueError(f\"{job_id!r} depends on unknown job {dep!r}\")\n                dependents[dep].append(job_id)\n                indegree[job_id] += 1\n        frontier = [j for j, d in indegree.items() if d == 0]\n        visited = 0\n        while frontier:\n            job = frontier.pop()\n            visited += 1\n            for nxt in dependents[job]:\n                indegree[nxt] -= 1\n                if indegree[nxt] == 0:\n                    frontier.append(nxt)\n        if visited != len(self._jobs):\n            raise ValueError(\"dependency cycle detected\")\n        return dependents\n\n    def _key(self, job_id: str):\n        job = self._jobs[job_id]\n        return (job[\"seq\"],)\n\n    def run(self) -> list[tuple[str, int, int]]:\n        dependents = self._validate()\n        report = {j: {\"status\": \"pending\", \"attempts\": 0} for j in self._order}\n        waiting = {j: set(job[\"deps\"]) for j, job in self._jobs.items()}\n        ready = [self._key(j) for j in self._order if not waiting[j]]\n        heapq.heapify(ready)\n        backoff: list[tuple[int, tuple]] = []  # (ready_at, key) for retries\n        idle = list(range(self.workers))\n        running: list[tuple[int, int, str]] = []  # (end, worker, job_id)\n        time = 0\n        out = []\n\n        def skip_downstream(job_id: str) -> None:\n            stack = list(dependents[job_id])\n            while stack:\n                nxt = stack.pop()\n                if report[nxt][\"status\"] == \"pending\":\n                    report[nxt][\"status\"] = \"skipped\"\n                    stack.extend(dependents[nxt])\n\n        while ready or running or backoff:\n            while backoff and backoff[0][0] <= time:\n                heapq.heappush(ready, heapq.heappop(backoff)[1])\n            while ready and idle:\n                job_id = self._order[heapq.heappop(ready)[-1]]\n                worker = heapq.heappop(idle)\n                report[job_id][\"attempts\"] += 1\n                end = time + self._jobs[job_id][\"duration\"]\n                heapq.heappush(running, (end, worker, job_id))\n            candidates = [t for t in (running[0][0] if running else None, backoff[0][0] if backoff else None) if t is not None]\n            time = min(candidates)\n            while running and running[0][0] == time:\n                end, worker, job_id = heapq.heappop(running)\n                heapq.heappush(idle, worker)\n                job = self._jobs[job_id]\n                attempt = report[job_id][\"attempts\"]\n                if attempt > job[\"fail_attempts\"]:\n                    report[job_id][\"status\"] = \"succeeded\"\n                    out.append((job_id, end - job[\"duration\"], end))\n                    for nxt in dependents[job_id]:\n                        waiting[nxt].discard(job_id)\n                        if not waiting[nxt]:\n                            heapq.heappush(ready, self._key(nxt))\n                elif attempt <= job[\"max_retries\"]:\n                    delay = self.base_backoff * 2 ** (attempt - 1)\n                    heapq.heappush(backoff, (time + delay, self._key(job_id)))\n                else:\n                    report[job_id][\"status\"] = \"failed\"\n                    skip_downstream(job_id)\n        self._report = report\n        return sorted(out, key=lambda r: (r[1], r[0]))\n\n    def report(self) -> dict[str, dict]:\n        if self._report is None:\n            raise RuntimeError(\"call run() first\")\n        return {j: dict(r) for j, r in self._report.items()}\n",
+        "explanation": "The simulation gains a third event source: jobs in backoff, kept in a heap by\n`ready_at`. The clock now advances to the earlier of the next completion and the next\nbackoff expiry. A completion either succeeds (releasing dependents), schedules a\nretry with exponential delay, or fails permanently and marks the transitive\ndownstream as skipped. Per-job attempt counts feed `report()`.",
+        "timeComplexity": "O((n * r + e) log n) for r attempts per job",
+        "spaceComplexity": "O(n + e)"
+      }
+    },
+    {
+      "id": "priorities",
+      "title": "Priorities",
+      "requirement": "Last one. Some jobs are urgent. `submit(..., priority=0)`: among **ready** jobs, higher\n`priority` runs first, and equal priorities keep submission order. Priority never preempts\na running job, and a job keeps its priority when it retries.\n\n```python\ns = Scheduler(workers=1)\ns.submit(\"batch\", 2)\ns.submit(\"backfill\", 2)\ns.submit(\"hotfix\", 1, priority=10)\ns.run()  # -> [(\"hotfix\", 0, 1), (\"batch\", 1, 3), (\"backfill\", 3, 5)]\n```",
+      "visibleTests": [
+        {
+          "name": "test_priority_first",
+          "code": "def test_priority_first():\n    s = Scheduler(workers=1)\n    s.submit(\"batch\", 2)\n    s.submit(\"backfill\", 2)\n    s.submit(\"hotfix\", 1, priority=10)\n    assert s.run() == [(\"hotfix\", 0, 1), (\"batch\", 1, 3), (\"backfill\", 3, 5)]\n"
+        },
+        {
+          "name": "test_no_preemption",
+          "description": "'normal' is ready from t=0 but can't preempt 'long'; once 'urgent' is ready at t=6 it jumps ahead.",
+          "code": "def test_no_preemption():\n    s = Scheduler(workers=1)\n    s.submit(\"long\", 5)\n    s.submit(\"gate\", 1, depends_on=[\"long\"])\n    s.submit(\"urgent\", 1, priority=9, depends_on=[\"gate\"])\n    s.submit(\"normal\", 1)\n    assert s.run() == [(\"long\", 0, 5), (\"gate\", 5, 6), (\"urgent\", 6, 7), (\"normal\", 7, 8)]\n"
+        }
+      ],
+      "hiddenTests": [
+        {
+          "name": "test_equal_priority_keeps_submission_order",
+          "code": "def test_equal_priority_keeps_submission_order():\n    s = Scheduler(workers=1)\n    for name in [\"c\", \"a\", \"b\"]:\n        s.submit(name, 1, priority=3)\n    assert [j for j, _, _ in s.run()] == [\"c\", \"a\", \"b\"]\n"
+        },
+        {
+          "name": "test_retry_keeps_priority",
+          "code": "def test_retry_keeps_priority():\n    s = Scheduler(workers=1, base_backoff=1)\n    s.submit(\"vip\", 1, priority=5, fail_attempts=1, max_retries=1)\n    s.submit(\"bulk1\", 1)\n    s.submit(\"bulk2\", 1)\n    s.submit(\"bulk3\", 1)\n    assert s.run() == [(\"bulk1\", 1, 2), (\"vip\", 2, 3), (\"bulk2\", 3, 4), (\"bulk3\", 4, 5)]\n"
+        },
+        {
+          "name": "test_priority_with_dependencies",
+          "code": "def test_priority_with_dependencies():\n    s = Scheduler(workers=2)\n    s.submit(\"a\", 2)\n    s.submit(\"low\", 1, depends_on=[\"a\"])\n    s.submit(\"high\", 1, depends_on=[\"a\"], priority=1)\n    s.submit(\"filler\", 3)\n    assert s.run() == [(\"a\", 0, 2), (\"filler\", 0, 3), (\"high\", 2, 3), (\"low\", 3, 4)]\n"
+        },
+        {
+          "name": "test_negative_priority_runs_last",
+          "code": "def test_negative_priority_runs_last():\n    s = Scheduler(workers=1)\n    s.submit(\"later\", 1, priority=-1)\n    s.submit(\"now\", 1)\n    assert [j for j, _, _ in s.run()] == [\"now\", \"later\"]\n"
+        },
+        {
+          "name": "test_large_priority_mix",
+          "code": "def test_large_priority_mix():\n    s = Scheduler(workers=4)\n    for i in range(20_000):\n        s.submit(f\"j{i:05d}\", 1, priority=i % 3)\n    out = s.run()\n    first_batch = {j for j, start, _ in out if start == 0}\n    assert first_batch == {\"j00002\", \"j00005\", \"j00008\", \"j00011\"}\n"
+        }
+      ],
+      "hints": [
+        "Only the ordering of the ready set changes.",
+        "Key the ready heap by `(-priority, submission_index)` instead of just the submission index, and use the same key when a retry re-enters the queue."
+      ],
+      "solution": {
+        "code": "import heapq\nfrom collections import defaultdict\n\n\nclass Scheduler:\n    def __init__(self, workers: int = 1, base_backoff: int = 1):\n        self.workers = workers\n        self.base_backoff = base_backoff\n        self._order: list[str] = []\n        self._jobs: dict[str, dict] = {}\n        self._report: dict[str, dict] | None = None\n\n    def submit(self, job_id: str, duration: int, depends_on=(), fail_attempts: int = 0,\n               max_retries: int = 0, priority: int = 0) -> None:\n        if job_id in self._jobs:\n            raise ValueError(f\"duplicate job id {job_id!r}\")\n        self._jobs[job_id] = {\n            \"duration\": duration,\n            \"deps\": tuple(depends_on),\n            \"fail_attempts\": fail_attempts,\n            \"max_retries\": max_retries,\n            \"seq\": len(self._order),\n            \"priority\": priority,\n        }\n        self._order.append(job_id)\n\n    def _validate(self) -> dict[str, list[str]]:\n        dependents: dict[str, list[str]] = defaultdict(list)\n        indegree = {j: 0 for j in self._jobs}\n        for job_id, job in self._jobs.items():\n            for dep in set(job[\"deps\"]):\n                if dep not in self._jobs:\n                    raise ValueError(f\"{job_id!r} depends on unknown job {dep!r}\")\n                dependents[dep].append(job_id)\n                indegree[job_id] += 1\n        frontier = [j for j, d in indegree.items() if d == 0]\n        visited = 0\n        while frontier:\n            job = frontier.pop()\n            visited += 1\n            for nxt in dependents[job]:\n                indegree[nxt] -= 1\n                if indegree[nxt] == 0:\n                    frontier.append(nxt)\n        if visited != len(self._jobs):\n            raise ValueError(\"dependency cycle detected\")\n        return dependents\n\n    def _key(self, job_id: str):\n        job = self._jobs[job_id]\n        return (-job[\"priority\"], job[\"seq\"])\n\n    def run(self) -> list[tuple[str, int, int]]:\n        dependents = self._validate()\n        report = {j: {\"status\": \"pending\", \"attempts\": 0} for j in self._order}\n        waiting = {j: set(job[\"deps\"]) for j, job in self._jobs.items()}\n        ready = [self._key(j) for j in self._order if not waiting[j]]\n        heapq.heapify(ready)\n        backoff: list[tuple[int, tuple]] = []  # (ready_at, key) for retries\n        idle = list(range(self.workers))\n        running: list[tuple[int, int, str]] = []  # (end, worker, job_id)\n        time = 0\n        out = []\n\n        def skip_downstream(job_id: str) -> None:\n            stack = list(dependents[job_id])\n            while stack:\n                nxt = stack.pop()\n                if report[nxt][\"status\"] == \"pending\":\n                    report[nxt][\"status\"] = \"skipped\"\n                    stack.extend(dependents[nxt])\n\n        while ready or running or backoff:\n            while backoff and backoff[0][0] <= time:\n                heapq.heappush(ready, heapq.heappop(backoff)[1])\n            while ready and idle:\n                job_id = self._order[heapq.heappop(ready)[-1]]\n                worker = heapq.heappop(idle)\n                report[job_id][\"attempts\"] += 1\n                end = time + self._jobs[job_id][\"duration\"]\n                heapq.heappush(running, (end, worker, job_id))\n            candidates = [t for t in (running[0][0] if running else None, backoff[0][0] if backoff else None) if t is not None]\n            time = min(candidates)\n            while running and running[0][0] == time:\n                end, worker, job_id = heapq.heappop(running)\n                heapq.heappush(idle, worker)\n                job = self._jobs[job_id]\n                attempt = report[job_id][\"attempts\"]\n                if attempt > job[\"fail_attempts\"]:\n                    report[job_id][\"status\"] = \"succeeded\"\n                    out.append((job_id, end - job[\"duration\"], end))\n                    for nxt in dependents[job_id]:\n                        waiting[nxt].discard(job_id)\n                        if not waiting[nxt]:\n                            heapq.heappush(ready, self._key(nxt))\n                elif attempt <= job[\"max_retries\"]:\n                    delay = self.base_backoff * 2 ** (attempt - 1)\n                    heapq.heappush(backoff, (time + delay, self._key(job_id)))\n                else:\n                    report[job_id][\"status\"] = \"failed\"\n                    skip_downstream(job_id)\n        self._report = report\n        return sorted(out, key=lambda r: (r[1], r[0]))\n\n    def report(self) -> dict[str, dict]:\n        if self._report is None:\n            raise RuntimeError(\"call run() first\")\n        return {j: dict(r) for j, r in self._report.items()}\n",
+        "explanation": "The ready queue's ordering key becomes `(-priority, submission_index)`, used both for\njobs released by dependencies and for retries leaving backoff, so priority survives\nretries. Running jobs are never interrupted, because priority only affects which\nready job an idle worker takes. With a priority of 0 everywhere, behavior is exactly\nstage 3's.",
+        "timeComplexity": "O((n * r + e) log n)",
+        "spaceComplexity": "O(n + e)"
+      }
+    }
+  ]
+}

@@ -1,0 +1,204 @@
+{
+  "schemaVersion": 1,
+  "id": "event-processor-simulation",
+  "title": "Clickstream Event Processor",
+  "type": "simulation",
+  "difficulty": "hard",
+  "tags": [
+    "data-processing",
+    "time-series",
+    "deduplication",
+    "design"
+  ],
+  "summary": "Build a clickstream processor for an analytics pipeline, then make it robust to real-world event delivery.",
+  "starterCode": "class EventProcessor:\n    def ingest(self, event: dict) -> None:\n        pass\n\n    def count(self, event_type: str | None = None) -> int:\n        pass\n\n    def active_users(self, start: int, end: int) -> list[str]:\n        pass\n",
+  "estimatedMinutes": 60,
+  "companies": [
+    "Segment",
+    "Amplitude",
+    "Confluent"
+  ],
+  "topics": [
+    "streaming",
+    "analytics"
+  ],
+  "stages": [
+    {
+      "id": "ingest",
+      "title": "Ingest and query",
+      "requirement": "We're building the processing layer for our product analytics. Events look like\n`{\"id\": \"e1\", \"user\": \"u1\", \"ts\": 1700000000, \"type\": \"click\"}` (`ts` in seconds).\nImplement `EventProcessor` with:\n\n- `ingest(event)`: records an event.\n- `count(event_type=None)`: the number of events, or the number of events of one type.\n- `active_users(start, end)`: sorted users with at least one event where `start <= ts < end`.\n\n```python\np = EventProcessor()\np.ingest({\"id\": \"e1\", \"user\": \"u1\", \"ts\": 10, \"type\": \"click\"})\np.ingest({\"id\": \"e2\", \"user\": \"u2\", \"ts\": 20, \"type\": \"view\"})\np.count()                # -> 2\np.count(\"view\")          # -> 1\np.active_users(0, 20)    # -> [\"u1\"]\n```",
+      "visibleTests": [
+        {
+          "name": "test_counts",
+          "code": "def test_counts():\n    def ev(i, user, ts, type_=\"click\"):\n        return {\"id\": f\"e{i}\", \"user\": user, \"ts\": ts, \"type\": type_}\n    p = EventProcessor()\n    p.ingest(ev(1, \"u1\", 10))\n    p.ingest(ev(2, \"u2\", 20, \"view\"))\n    assert p.count() == 2\n    assert p.count(\"view\") == 1\n    assert p.count(\"purchase\") == 0\n"
+        },
+        {
+          "name": "test_active_users_half_open",
+          "code": "def test_active_users_half_open():\n    def ev(i, user, ts, type_=\"click\"):\n        return {\"id\": f\"e{i}\", \"user\": user, \"ts\": ts, \"type\": type_}\n    p = EventProcessor()\n    p.ingest(ev(1, \"u1\", 10))\n    p.ingest(ev(2, \"u2\", 20))\n    assert p.active_users(0, 20) == [\"u1\"]\n    assert p.active_users(10, 21) == [\"u1\", \"u2\"]\n"
+        }
+      ],
+      "hiddenTests": [
+        {
+          "name": "test_active_users_deduplicated_and_sorted",
+          "code": "def test_active_users_deduplicated_and_sorted():\n    def ev(i, user, ts, type_=\"click\"):\n        return {\"id\": f\"e{i}\", \"user\": user, \"ts\": ts, \"type\": type_}\n    p = EventProcessor()\n    for i, u in enumerate([\"zed\", \"amy\", \"zed\", \"bob\"]):\n        p.ingest(ev(i, u, 5))\n    assert p.active_users(0, 10) == [\"amy\", \"bob\", \"zed\"]\n"
+        },
+        {
+          "name": "test_empty_processor",
+          "code": "def test_empty_processor():\n    def ev(i, user, ts, type_=\"click\"):\n        return {\"id\": f\"e{i}\", \"user\": user, \"ts\": ts, \"type\": type_}\n    p = EventProcessor()\n    assert p.count() == 0\n    assert p.active_users(0, 100) == []\n"
+        },
+        {
+          "name": "test_many_events",
+          "code": "def test_many_events():\n    def ev(i, user, ts, type_=\"click\"):\n        return {\"id\": f\"e{i}\", \"user\": user, \"ts\": ts, \"type\": type_}\n    p = EventProcessor()\n    for i in range(50_000):\n        p.ingest(ev(i, f\"u{i % 100}\", i, \"click\" if i % 2 else \"view\"))\n    assert p.count() == 50_000\n    assert p.count(\"view\") == 25_000\n    assert len(p.active_users(0, 50_000)) == 100\n"
+        }
+      ],
+      "hints": [
+        "Store the events. For counts by type, a `Counter` avoids rescanning.",
+        "`active_users` can scan the stored events, collect users into a set, then sort."
+      ],
+      "solution": {
+        "code": "from collections import Counter\n\n\nclass EventProcessor:\n    def __init__(self):\n        self._events: list[dict] = []\n        self._types: Counter[str] = Counter()\n\n    def ingest(self, event: dict) -> None:\n        self._events.append(event)\n        self._types[event[\"type\"]] += 1\n\n    def count(self, event_type: str | None = None) -> int:\n        return len(self._events) if event_type is None else self._types[event_type]\n\n    def active_users(self, start: int, end: int) -> list[str]:\n        return sorted({e[\"user\"] for e in self._events if start <= e[\"ts\"] < end})\n",
+        "explanation": "A list of events plus a `Counter` of types makes `count` O(1). `active_users` scans\nand deduplicates with a set, which is O(n) per query and fine for now. Notice the\nhalf-open interval `[start, end)`. It's the convention that makes adjacent ranges\ntile without double counting.",
+        "timeComplexity": "O(1) ingest/count; O(n) active_users",
+        "spaceComplexity": "O(n)"
+      }
+    },
+    {
+      "id": "sessions",
+      "title": "Sessionization",
+      "requirement": "Nice. Analysts want **sessions**. The constructor now takes `session_gap=1800` (seconds).\nFor one user, events sorted by time form sessions: a new session starts whenever the\ngap to the user's previous event is **greater than** `session_gap`. A gap equal to\n`session_gap` stays in the same session.\n\nAdd `sessions(user)` returning a list of `(start_ts, end_ts, event_count)` tuples\nordered by start. An unknown user has `[]`. For now, each user's events arrive in\ntimestamp order.\n\n```python\np = EventProcessor(session_gap=30)\nfor i, ts in enumerate([0, 10, 40, 100]):\n    p.ingest({\"id\": f\"e{i}\", \"user\": \"u1\", \"ts\": ts, \"type\": \"click\"})\np.sessions(\"u1\")  # -> [(0, 40, 3), (100, 100, 1)]\n```",
+      "visibleTests": [
+        {
+          "name": "test_sessions_example",
+          "code": "def test_sessions_example():\n    def ev(i, user, ts, type_=\"click\"):\n        return {\"id\": f\"e{i}\", \"user\": user, \"ts\": ts, \"type\": type_}\n    p = EventProcessor(session_gap=30)\n    for i, ts in enumerate([0, 10, 40, 100]):\n        p.ingest(ev(i, \"u1\", ts))\n    assert p.sessions(\"u1\") == [(0, 40, 3), (100, 100, 1)]\n"
+        },
+        {
+          "name": "test_unknown_user",
+          "code": "def test_unknown_user():\n    def ev(i, user, ts, type_=\"click\"):\n        return {\"id\": f\"e{i}\", \"user\": user, \"ts\": ts, \"type\": type_}\n    assert EventProcessor().sessions('nobody') == []\n"
+        }
+      ],
+      "hiddenTests": [
+        {
+          "name": "test_gap_equal_to_threshold_continues",
+          "code": "def test_gap_equal_to_threshold_continues():\n    def ev(i, user, ts, type_=\"click\"):\n        return {\"id\": f\"e{i}\", \"user\": user, \"ts\": ts, \"type\": type_}\n    p = EventProcessor(session_gap=30)\n    p.ingest(ev(1, \"u\", 0))\n    p.ingest(ev(2, \"u\", 30))\n    p.ingest(ev(3, \"u\", 61))\n    assert p.sessions(\"u\") == [(0, 30, 2), (61, 61, 1)]\n"
+        },
+        {
+          "name": "test_default_gap_is_thirty_minutes",
+          "code": "def test_default_gap_is_thirty_minutes():\n    def ev(i, user, ts, type_=\"click\"):\n        return {\"id\": f\"e{i}\", \"user\": user, \"ts\": ts, \"type\": type_}\n    p = EventProcessor()\n    p.ingest(ev(1, \"u\", 0))\n    p.ingest(ev(2, \"u\", 1800))\n    p.ingest(ev(3, \"u\", 3601))\n    assert p.sessions(\"u\") == [(0, 1800, 2), (3601, 3601, 1)]\n"
+        },
+        {
+          "name": "test_users_are_independent",
+          "code": "def test_users_are_independent():\n    def ev(i, user, ts, type_=\"click\"):\n        return {\"id\": f\"e{i}\", \"user\": user, \"ts\": ts, \"type\": type_}\n    p = EventProcessor(session_gap=5)\n    p.ingest(ev(1, \"a\", 0))\n    p.ingest(ev(2, \"b\", 3))\n    p.ingest(ev(3, \"a\", 4))\n    assert p.sessions(\"a\") == [(0, 4, 2)]\n    assert p.sessions(\"b\") == [(3, 3, 1)]\n"
+        },
+        {
+          "name": "test_same_timestamp_events",
+          "code": "def test_same_timestamp_events():\n    def ev(i, user, ts, type_=\"click\"):\n        return {\"id\": f\"e{i}\", \"user\": user, \"ts\": ts, \"type\": type_}\n    p = EventProcessor(session_gap=0)\n    for i in range(3):\n        p.ingest(ev(i, \"u\", 7))\n    assert p.sessions(\"u\") == [(7, 7, 3)]\n"
+        }
+      ],
+      "hints": [
+        "Within a user, you only need to know about their most recent session to place a new in-order event.",
+        "Keep a per-user list of `[start, end, count]`. A new event either extends the last session (gap <= session_gap) or starts a new one.",
+        "Default `session_gap=1800` so `EventProcessor()` from stage 1 still works."
+      ],
+      "solution": {
+        "code": "from collections import Counter, defaultdict\n\n\nclass EventProcessor:\n    def __init__(self, session_gap: int = 1800):\n        self.session_gap = session_gap\n        self._events: list[dict] = []\n        self._types: Counter[str] = Counter()\n        # user -> list of [start, end, count], built incrementally (events arrive in order)\n        self._sessions: dict[str, list[list[int]]] = defaultdict(list)\n\n    def ingest(self, event: dict) -> None:\n        self._events.append(event)\n        self._types[event[\"type\"]] += 1\n        sessions = self._sessions[event[\"user\"]]\n        ts = event[\"ts\"]\n        if sessions and ts - sessions[-1][1] <= self.session_gap:\n            sessions[-1][1] = ts\n            sessions[-1][2] += 1\n        else:\n            sessions.append([ts, ts, 1])\n\n    def count(self, event_type: str | None = None) -> int:\n        return len(self._events) if event_type is None else self._types[event_type]\n\n    def active_users(self, start: int, end: int) -> list[str]:\n        return sorted({e[\"user\"] for e in self._events if start <= e[\"ts\"] < end})\n\n    def sessions(self, user: str) -> list[tuple[int, int, int]]:\n        return [tuple(s) for s in self._sessions.get(user, [])]\n",
+        "explanation": "Since events arrive in order per user, sessions can be built incrementally: extend\nthe user's last session when the gap is within `session_gap`, otherwise open a new\none. Each ingest is O(1). This leans hard on the in-order assumption, and that's\nexactly what the interviewer will take away next.",
+        "timeComplexity": "O(1) ingest; O(s) sessions",
+        "spaceComplexity": "O(n)"
+      }
+    },
+    {
+      "id": "late-events",
+      "title": "Late-arriving events",
+      "requirement": "Reality check: mobile clients buffer events offline, so events now arrive **out of order**.\n\n1. Sessions must always reflect the events **sorted by timestamp**, whatever the arrival\n   order. A late event can extend a session or bridge two sessions into one.\n2. The constructor takes `allowed_lateness=None`. The processor tracks a **watermark**:\n   the maximum `ts` ingested so far. If `allowed_lateness` is set, an event with\n   `ts < watermark - allowed_lateness` is **dropped**. It is ignored by `count`,\n   `active_users` and `sessions`, and counted by a new `dropped()` method. With `None`,\n   nothing is ever dropped.\n\n(`ev(i, user, ts)` is shorthand for `{\"id\": f\"e{i}\", \"user\": user, \"ts\": ts, \"type\": \"click\"}`.)\n\n```python\np = EventProcessor(session_gap=30, allowed_lateness=100)\np.ingest(ev(1, \"u\", 0)); p.ingest(ev(2, \"u\", 60))\np.sessions(\"u\")                # [(0, 0, 1), (60, 60, 1)]\np.ingest(ev(3, \"u\", 30))       # late, but within lateness: bridges both sessions\np.sessions(\"u\")                # [(0, 60, 3)]\np.ingest(ev(4, \"u\", 500)); p.ingest(ev(5, \"u\", 399))  # 399 < 500 - 100: dropped\np.dropped()                    # 1\n```",
+      "visibleTests": [
+        {
+          "name": "test_late_event_bridges_sessions",
+          "code": "def test_late_event_bridges_sessions():\n    def ev(i, user, ts, type_=\"click\"):\n        return {\"id\": f\"e{i}\", \"user\": user, \"ts\": ts, \"type\": type_}\n    p = EventProcessor(session_gap=30, allowed_lateness=100)\n    p.ingest(ev(1, \"u\", 0))\n    p.ingest(ev(2, \"u\", 60))\n    assert p.sessions(\"u\") == [(0, 0, 1), (60, 60, 1)]\n    p.ingest(ev(3, \"u\", 30))\n    assert p.sessions(\"u\") == [(0, 60, 3)]\n"
+        },
+        {
+          "name": "test_too_late_is_dropped",
+          "code": "def test_too_late_is_dropped():\n    def ev(i, user, ts, type_=\"click\"):\n        return {\"id\": f\"e{i}\", \"user\": user, \"ts\": ts, \"type\": type_}\n    p = EventProcessor(session_gap=30, allowed_lateness=100)\n    p.ingest(ev(1, \"u\", 500))\n    p.ingest(ev(2, \"u\", 399))\n    p.ingest(ev(3, \"u\", 400))\n    assert p.dropped() == 1\n    assert p.count() == 2\n    assert p.sessions(\"u\") == [(400, 400, 1), (500, 500, 1)]\n"
+        }
+      ],
+      "hiddenTests": [
+        {
+          "name": "test_no_lateness_limit_never_drops",
+          "code": "def test_no_lateness_limit_never_drops():\n    def ev(i, user, ts, type_=\"click\"):\n        return {\"id\": f\"e{i}\", \"user\": user, \"ts\": ts, \"type\": type_}\n    p = EventProcessor(session_gap=10)\n    p.ingest(ev(1, \"u\", 10_000))\n    p.ingest(ev(2, \"u\", 0))\n    assert p.dropped() == 0\n    assert p.sessions(\"u\") == [(0, 0, 1), (10_000, 10_000, 1)]\n"
+        },
+        {
+          "name": "test_watermark_is_global_across_users",
+          "code": "def test_watermark_is_global_across_users():\n    def ev(i, user, ts, type_=\"click\"):\n        return {\"id\": f\"e{i}\", \"user\": user, \"ts\": ts, \"type\": type_}\n    p = EventProcessor(allowed_lateness=10)\n    p.ingest(ev(1, \"a\", 100))\n    p.ingest(ev(2, \"b\", 50))\n    assert p.dropped() == 1\n    assert p.active_users(0, 200) == [\"a\"]\n"
+        },
+        {
+          "name": "test_dropped_events_do_not_move_watermark_or_counts",
+          "code": "def test_dropped_events_do_not_move_watermark_or_counts():\n    def ev(i, user, ts, type_=\"click\"):\n        return {\"id\": f\"e{i}\", \"user\": user, \"ts\": ts, \"type\": type_}\n    p = EventProcessor(allowed_lateness=5)\n    p.ingest(ev(1, \"u\", 100))\n    p.ingest(ev(2, \"u\", 10, \"view\"))\n    assert p.count(\"view\") == 0\n    p.ingest(ev(3, \"u\", 96))\n    assert p.dropped() == 1 and p.count() == 2\n"
+        },
+        {
+          "name": "test_out_of_order_active_users",
+          "code": "def test_out_of_order_active_users():\n    def ev(i, user, ts, type_=\"click\"):\n        return {\"id\": f\"e{i}\", \"user\": user, \"ts\": ts, \"type\": type_}\n    p = EventProcessor()\n    p.ingest(ev(1, \"late\", 5))\n    p.ingest(ev(2, \"early\", 1))\n    assert p.active_users(0, 3) == [\"early\"]\n"
+        },
+        {
+          "name": "test_reverse_order_stream",
+          "description": "Building sessions incrementally on arrival order breaks here.",
+          "code": "def test_reverse_order_stream():\n    def ev(i, user, ts, type_=\"click\"):\n        return {\"id\": f\"e{i}\", \"user\": user, \"ts\": ts, \"type\": type_}\n    p = EventProcessor(session_gap=1)\n    for i, ts in enumerate(range(20_000, 0, -1)):\n        p.ingest(ev(i, \"u\", ts))\n    assert p.sessions(\"u\") == [(1, 20_000, 20_000)]\n"
+        }
+      ],
+      "hints": [
+        "Incremental session building assumed order. What do you need to store to rebuild sessions correctly at any time?",
+        "Keep each user's timestamps sorted (`bisect.insort`) and compute sessions on demand in `sessions(user)`.",
+        "Track the watermark as the max accepted `ts`. Check lateness *before* updating any counters, so dropped events leave no trace."
+      ],
+      "solution": {
+        "code": "import bisect\nfrom collections import Counter, defaultdict\n\n\nclass EventProcessor:\n    def __init__(self, session_gap: int = 1800, allowed_lateness: int | None = None):\n        self.session_gap = session_gap\n        self.allowed_lateness = allowed_lateness\n        self._types: Counter[str] = Counter()\n        self._times: dict[str, list[int]] = defaultdict(list)  # user -> sorted timestamps\n        self._total = 0\n        self._watermark: int | None = None\n        self._dropped = 0\n\n    def _is_late(self, ts: int) -> bool:\n        return (\n            self.allowed_lateness is not None\n            and self._watermark is not None\n            and ts < self._watermark - self.allowed_lateness\n        )\n\n    def ingest(self, event: dict) -> None:\n        ts = event[\"ts\"]\n        if self._is_late(ts):\n            self._dropped += 1\n            return\n        self._watermark = ts if self._watermark is None else max(self._watermark, ts)\n        self._total += 1\n        self._types[event[\"type\"]] += 1\n        bisect.insort(self._times[event[\"user\"]], ts)\n\n    def count(self, event_type: str | None = None) -> int:\n        return self._total if event_type is None else self._types[event_type]\n\n    def active_users(self, start: int, end: int) -> list[str]:\n        active = []\n        for user, times in self._times.items():\n            i = bisect.bisect_left(times, start)\n            if i < len(times) and times[i] < end:\n                active.append(user)\n        return sorted(active)\n\n    def sessions(self, user: str) -> list[tuple[int, int, int]]:\n        result: list[tuple[int, int, int]] = []\n        start = prev = None\n        count = 0\n        for ts in self._times.get(user, []):\n            if prev is not None and ts - prev > self.session_gap:\n                result.append((start, prev, count))\n                start, count = ts, 0\n            if start is None:\n                start = ts\n            prev = ts\n            count += 1\n        if start is not None:\n            result.append((start, prev, count))\n        return result\n\n    def dropped(self) -> int:\n        return self._dropped\n",
+        "explanation": "The incremental session list from stage 2 can't absorb out-of-order events, so the\nrefactor stores sorted timestamps per user (`insort`) and derives sessions on read.\nOne sorted pass merges gaps `<= session_gap`, so a late event bridging two sessions\ncomes out right automatically. Lateness is checked against a global watermark before\nany state changes. `active_users` now uses binary search per user.",
+        "timeComplexity": "O(log k + k) ingest (insort into k user events); O(k) sessions",
+        "spaceComplexity": "O(n)"
+      }
+    },
+    {
+      "id": "dedup",
+      "title": "Exactly-once counting",
+      "requirement": "Last one. The ingestion queue is at-least-once, so the **same event** (same `id`) can be\ndelivered multiple times, even much later. Counting must be exactly-once:\n\n- The first accepted delivery of an `id` counts. Later deliveries of an accepted `id` are\n  **duplicates**: they change nothing and are counted by `duplicates()`.\n- Check duplicates **before** lateness: a late re-delivery of an accepted event is a\n  duplicate, not a drop.\n- A dropped event's `id` is **not** remembered, so a re-delivery is evaluated afresh\n  (and is normally dropped again).\n\n(`ev(i, user, ts)` is shorthand for `{\"id\": f\"e{i}\", \"user\": user, \"ts\": ts, \"type\": \"click\"}`.)\n\n```python\np = EventProcessor(allowed_lateness=10)\np.ingest(ev(1, \"u\", 100))\np.ingest(ev(1, \"u\", 100))   # duplicate\np.ingest(ev(2, \"u\", 500))\np.ingest(ev(1, \"u\", 100))   # still a duplicate (not a drop)\n(p.count(), p.duplicates(), p.dropped())  # -> (2, 2, 0)\n```",
+      "visibleTests": [
+        {
+          "name": "test_duplicates_counted_once",
+          "code": "def test_duplicates_counted_once():\n    def ev(i, user, ts, type_=\"click\"):\n        return {\"id\": f\"e{i}\", \"user\": user, \"ts\": ts, \"type\": type_}\n    p = EventProcessor(allowed_lateness=10)\n    p.ingest(ev(1, \"u\", 100))\n    p.ingest(ev(1, \"u\", 100))\n    p.ingest(ev(2, \"u\", 500))\n    p.ingest(ev(1, \"u\", 100))\n    assert (p.count(), p.duplicates(), p.dropped()) == (2, 2, 0)\n"
+        },
+        {
+          "name": "test_duplicates_do_not_inflate_sessions",
+          "code": "def test_duplicates_do_not_inflate_sessions():\n    def ev(i, user, ts, type_=\"click\"):\n        return {\"id\": f\"e{i}\", \"user\": user, \"ts\": ts, \"type\": type_}\n    p = EventProcessor(session_gap=30)\n    for _ in range(3):\n        p.ingest(ev(7, \"u\", 5))\n    assert p.sessions(\"u\") == [(5, 5, 1)]\n"
+        }
+      ],
+      "hiddenTests": [
+        {
+          "name": "test_dropped_ids_are_not_remembered",
+          "code": "def test_dropped_ids_are_not_remembered():\n    def ev(i, user, ts, type_=\"click\"):\n        return {\"id\": f\"e{i}\", \"user\": user, \"ts\": ts, \"type\": type_}\n    p = EventProcessor(allowed_lateness=10)\n    p.ingest(ev(1, \"u\", 100))\n    p.ingest(ev(2, \"u\", 50))\n    p.ingest(ev(2, \"u\", 50))\n    assert (p.dropped(), p.duplicates()) == (2, 0)\n"
+        },
+        {
+          "name": "test_duplicate_types_not_counted",
+          "code": "def test_duplicate_types_not_counted():\n    def ev(i, user, ts, type_=\"click\"):\n        return {\"id\": f\"e{i}\", \"user\": user, \"ts\": ts, \"type\": type_}\n    p = EventProcessor()\n    p.ingest(ev(1, \"u\", 1, \"purchase\"))\n    p.ingest(ev(1, \"u\", 1, \"purchase\"))\n    assert p.count(\"purchase\") == 1\n"
+        },
+        {
+          "name": "test_duplicate_ids_across_users",
+          "description": "Event ids are globally unique: same id from another user is still a duplicate.",
+          "code": "def test_duplicate_ids_across_users():\n    def ev(i, user, ts, type_=\"click\"):\n        return {\"id\": f\"e{i}\", \"user\": user, \"ts\": ts, \"type\": type_}\n    p = EventProcessor()\n    p.ingest(ev(1, \"a\", 1))\n    p.ingest(ev(1, \"b\", 2))\n    assert p.active_users(0, 10) == [\"a\"]\n    assert p.duplicates() == 1\n"
+        },
+        {
+          "name": "test_heavy_redelivery",
+          "code": "def test_heavy_redelivery():\n    def ev(i, user, ts, type_=\"click\"):\n        return {\"id\": f\"e{i}\", \"user\": user, \"ts\": ts, \"type\": type_}\n    p = EventProcessor(session_gap=10)\n    for i in range(30_000):\n        p.ingest(ev(i % 10_000, \"u\", i % 10_000))\n    assert p.count() == 10_000\n    assert p.duplicates() == 20_000\n    assert p.sessions(\"u\") == [(0, 9_999, 10_000)]\n"
+        }
+      ],
+      "hints": [
+        "Exactly-once on top of at-least-once delivery means remembering which ids you have already accepted.",
+        "Keep a set of accepted ids. Check it first in `ingest`, then lateness, and only add the id once the event is accepted.",
+        "Mention to the interviewer that the id set grows forever. Real systems bound it with the watermark (ids older than the lateness window can be forgotten) or a TTL store."
+      ],
+      "solution": {
+        "code": "import bisect\nfrom collections import Counter, defaultdict\n\n\nclass EventProcessor:\n    def __init__(self, session_gap: int = 1800, allowed_lateness: int | None = None):\n        self.session_gap = session_gap\n        self.allowed_lateness = allowed_lateness\n        self._types: Counter[str] = Counter()\n        self._times: dict[str, list[int]] = defaultdict(list)  # user -> sorted timestamps\n        self._total = 0\n        self._watermark: int | None = None\n        self._dropped = 0\n        self._seen_ids: set[str] = set()\n        self._duplicates = 0\n\n    def _is_late(self, ts: int) -> bool:\n        return (\n            self.allowed_lateness is not None\n            and self._watermark is not None\n            and ts < self._watermark - self.allowed_lateness\n        )\n\n    def ingest(self, event: dict) -> None:\n        ts = event[\"ts\"]\n        if event[\"id\"] in self._seen_ids:\n            self._duplicates += 1\n            return\n        if self._is_late(ts):\n            self._dropped += 1\n            return\n        self._watermark = ts if self._watermark is None else max(self._watermark, ts)\n        self._seen_ids.add(event[\"id\"])\n        self._total += 1\n        self._types[event[\"type\"]] += 1\n        bisect.insort(self._times[event[\"user\"]], ts)\n\n    def count(self, event_type: str | None = None) -> int:\n        return self._total if event_type is None else self._types[event_type]\n\n    def active_users(self, start: int, end: int) -> list[str]:\n        active = []\n        for user, times in self._times.items():\n            i = bisect.bisect_left(times, start)\n            if i < len(times) and times[i] < end:\n                active.append(user)\n        return sorted(active)\n\n    def sessions(self, user: str) -> list[tuple[int, int, int]]:\n        result: list[tuple[int, int, int]] = []\n        start = prev = None\n        count = 0\n        for ts in self._times.get(user, []):\n            if prev is not None and ts - prev > self.session_gap:\n                result.append((start, prev, count))\n                start, count = ts, 0\n            if start is None:\n                start = ts\n            prev = ts\n            count += 1\n        if start is not None:\n            result.append((start, prev, count))\n        return result\n\n    def dropped(self) -> int:\n        return self._dropped\n\n    def duplicates(self) -> int:\n        return self._duplicates\n",
+        "explanation": "A set of accepted ids, checked first in `ingest`, makes counting idempotent. Ordering\nthe checks (duplicate, then late) meets the spec that late re-deliveries of accepted\nevents are duplicates. Adding the id only after acceptance means dropped ids get\nre-evaluated. In production the id set would be bounded by the watermark, since ids\nolder than the lateness window can never be accepted again anyway.",
+        "timeComplexity": "O(log k + k) ingest; O(1) duplicate check",
+        "spaceComplexity": "O(n) including the id set"
+      }
+    }
+  ]
+}

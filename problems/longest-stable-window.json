@@ -1,0 +1,78 @@
+{
+  "schemaVersion": 1,
+  "id": "longest-stable-window",
+  "title": "Longest Stable Sensor Window",
+  "type": "standard",
+  "difficulty": "medium",
+  "tags": [
+    "sliding-window",
+    "queue",
+    "time-series"
+  ],
+  "summary": "Find the longest run of sensor readings whose spread stays within a tolerance.",
+  "starterCode": "def longest_stable_window(readings: list[int], tolerance: int) -> int:\n    \"\"\"Length of the longest contiguous run with max - min <= tolerance.\"\"\"\n    raise NotImplementedError\n",
+  "estimatedMinutes": 25,
+  "companies": [
+    "Tesla",
+    "Datadog"
+  ],
+  "topics": [
+    "iot",
+    "monitoring"
+  ],
+  "stages": [
+    {
+      "id": "stable-window",
+      "title": "Longest stable window",
+      "requirement": "A temperature sensor emits integer readings. A window is **stable** if\n`max(window) - min(window) <= tolerance`. Write `longest_stable_window(readings, tolerance)`\nreturning the length of the longest stable **contiguous** window. Return 0 for no readings.\n`tolerance >= 0`.\n\n```python\nlongest_stable_window([8, 2, 4, 7], 4)          # -> 2   ([2, 4] or [4, 7])\nlongest_stable_window([10, 1, 2, 4, 7, 2], 5)   # -> 4   ([2, 4, 7, 2])\n```\n\nUp to 100,000 readings.",
+      "visibleTests": [
+        {
+          "name": "test_example_one",
+          "code": "def test_example_one():\n    assert longest_stable_window([8, 2, 4, 7], 4) == 2\n"
+        },
+        {
+          "name": "test_example_two",
+          "code": "def test_example_two():\n    assert longest_stable_window([10, 1, 2, 4, 7, 2], 5) == 4\n"
+        }
+      ],
+      "hiddenTests": [
+        {
+          "name": "test_empty",
+          "code": "def test_empty():\n    assert longest_stable_window([], 3) == 0\n"
+        },
+        {
+          "name": "test_zero_tolerance",
+          "code": "def test_zero_tolerance():\n    assert longest_stable_window([4, 2, 2, 2, 4, 4, 2, 2], 0) == 3\n"
+        },
+        {
+          "name": "test_all_stable",
+          "code": "def test_all_stable():\n    assert longest_stable_window([5, 5, 6, 5], 1) == 4\n"
+        },
+        {
+          "name": "test_negative_readings",
+          "code": "def test_negative_readings():\n    assert longest_stable_window([-3, -1, -2, 5, 6], 2) == 3\n"
+        },
+        {
+          "name": "test_large_monotonic",
+          "description": "A window that re-scans for min/max each step is too slow here.",
+          "code": "def test_large_monotonic():\n    readings = list(range(100_000))\n    assert longest_stable_window(readings, 999) == 1000\n"
+        },
+        {
+          "name": "test_large_against_brute_force",
+          "code": "def test_large_against_brute_force():\n    import random\n    rng = random.Random(7)\n    readings = [rng.randint(0, 50) for _ in range(300)]\n    best = 0\n    for i in range(len(readings)):\n        lo = hi = readings[i]\n        for j in range(i, len(readings)):\n            lo, hi = min(lo, readings[j]), max(hi, readings[j])\n            if hi - lo > 10:\n                break\n            best = max(best, j - i + 1)\n    assert longest_stable_window(readings, 10) == best\n"
+        }
+      ],
+      "hints": [
+        "If a window is unstable, any window containing it is unstable too, so a two-pointer sliding window works.",
+        "The hard part is knowing the current window's min and max in O(1) as both ends move.",
+        "Keep two monotonic deques of indices: one decreasing (front is the max), one increasing (front is the min). Pop fronts that fall out of the window."
+      ],
+      "solution": {
+        "code": "from collections import deque\n\n\ndef longest_stable_window(readings: list[int], tolerance: int) -> int:\n    maxq: deque[int] = deque()  # indices, readings decreasing\n    minq: deque[int] = deque()  # indices, readings increasing\n    left = best = 0\n    for right, value in enumerate(readings):\n        while maxq and readings[maxq[-1]] <= value:\n            maxq.pop()\n        maxq.append(right)\n        while minq and readings[minq[-1]] >= value:\n            minq.pop()\n        minq.append(right)\n        while readings[maxq[0]] - readings[minq[0]] > tolerance:\n            left += 1\n            if maxq[0] < left:\n                maxq.popleft()\n            if minq[0] < left:\n                minq.popleft()\n        best = max(best, right - left + 1)\n    return best\n",
+        "explanation": "Stability is monotone: shrinking a window never makes it unstable. That allows a sliding\nwindow where `right` advances every step and `left` only moves forward. Two monotonic\ndeques keep the window max and min at their fronts. Each index is pushed and popped at\nmost once per deque, so the whole pass is linear.",
+        "timeComplexity": "O(n)",
+        "spaceComplexity": "O(n) worst case for the deques"
+      }
+    }
+  ]
+}

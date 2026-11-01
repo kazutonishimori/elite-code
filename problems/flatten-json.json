@@ -1,0 +1,77 @@
+{
+  "schemaVersion": 1,
+  "id": "flatten-json",
+  "title": "Flatten Nested JSON",
+  "type": "standard",
+  "difficulty": "medium",
+  "tags": [
+    "recursion",
+    "data-processing",
+    "string"
+  ],
+  "summary": "Flatten nested event payloads into dotted column names for a columnar warehouse.",
+  "starterCode": "def flatten(payload: dict) -> dict:\n    \"\"\"Flatten nested dicts and lists into dotted keys.\"\"\"\n    raise NotImplementedError\n",
+  "estimatedMinutes": 20,
+  "companies": [
+    "Fivetran",
+    "Airbyte"
+  ],
+  "topics": [
+    "ingestion"
+  ],
+  "stages": [
+    {
+      "id": "flatten",
+      "title": "Flatten a payload",
+      "requirement": "Before loading JSON events into a warehouse, we flatten them. Write `flatten(payload)`:\n\n- Nested dict keys are joined with `\".\"`: `{\"a\": {\"b\": 1}}` becomes `{\"a.b\": 1}`.\n- List elements use their index as the key: `{\"tags\": [\"x\", \"y\"]}` becomes\n  `{\"tags.0\": \"x\", \"tags.1\": \"y\"}`.\n- **Empty** dicts and lists are kept as values (`{}` / `[]`) so the column isn't lost.\n- Scalars (str, int, float, bool, None) are leaves.\n- Output keys follow a depth-first walk in the payload's own order.\n- Don't mutate the input. Payloads can be nested 1,000 levels deep.\n\n```python\nflatten({\"user\": {\"id\": 7, \"roles\": [\"admin\"]}, \"meta\": {}})\n# -> {\"user.id\": 7, \"user.roles.0\": \"admin\", \"meta\": {}}\n```",
+      "visibleTests": [
+        {
+          "name": "test_example",
+          "code": "def test_example():\n    assert flatten({\"user\": {\"id\": 7, \"roles\": [\"admin\"]}, \"meta\": {}}) == {\"user.id\": 7, \"user.roles.0\": \"admin\", \"meta\": {}}\n"
+        }
+      ],
+      "hiddenTests": [
+        {
+          "name": "test_flat_payload_unchanged",
+          "code": "def test_flat_payload_unchanged():\n    assert flatten({\"a\": 1, \"b\": None}) == {\"a\": 1, \"b\": None}\n"
+        },
+        {
+          "name": "test_empty_payload",
+          "code": "def test_empty_payload():\n    assert flatten({}) == {}\n"
+        },
+        {
+          "name": "test_lists_of_dicts",
+          "code": "def test_lists_of_dicts():\n    assert flatten({\"items\": [{\"sku\": \"a\"}, {\"sku\": \"b\", \"qty\": 2}]}) == {\n        \"items.0.sku\": \"a\", \"items.1.sku\": \"b\", \"items.1.qty\": 2,\n    }\n"
+        },
+        {
+          "name": "test_empty_list_kept",
+          "code": "def test_empty_list_kept():\n    assert flatten({\"a\": {\"b\": []}}) == {\"a.b\": []}\n"
+        },
+        {
+          "name": "test_key_order",
+          "code": "def test_key_order():\n    assert list(flatten({\"z\": 1, \"a\": {\"m\": 2, \"b\": 3}})) == [\"z\", \"a.m\", \"a.b\"]\n"
+        },
+        {
+          "name": "test_not_mutated",
+          "code": "def test_not_mutated():\n    payload = {\"a\": {\"b\": [1, {\"c\": 2}]}}\n    flatten(payload)\n    assert payload == {\"a\": {\"b\": [1, {\"c\": 2}]}}\n"
+        },
+        {
+          "name": "test_deep_nesting",
+          "description": "Python's default recursion limit is about 1000, so naive recursion overflows here.",
+          "code": "def test_deep_nesting():\n    payload = {}\n    node = payload\n    for _ in range(1000):\n        node[\"n\"] = {}\n        node = node[\"n\"]\n    node[\"leaf\"] = True\n    out = flatten(payload)\n    assert out == {\".\".join([\"n\"] * 1000) + \".leaf\": True}\n"
+        }
+      ],
+      "hints": [
+        "Recursion maps naturally onto this: flatten each child under the prefix `parent_key.`.",
+        "Recursion depth is a trap at 1,000 levels. Use an explicit stack of `(prefix, value)` pairs instead.",
+        "To keep depth-first order with a stack, push children in reverse order (or use recursion with an iterative fallback)."
+      ],
+      "solution": {
+        "code": "def flatten(payload: dict) -> dict:\n    out: dict = {}\n    stack: list[tuple[str, object]] = [(str(k), v) for k, v in reversed(list(payload.items()))]\n    while stack:\n        key, value = stack.pop()\n        if isinstance(value, dict) and value:\n            children = [(f\"{key}.{k}\", v) for k, v in value.items()]\n        elif isinstance(value, list) and value:\n            children = [(f\"{key}.{i}\", v) for i, v in enumerate(value)]\n        else:\n            out[key] = value\n            continue\n        stack.extend(reversed(children))\n    return out\n",
+        "explanation": "An explicit stack replaces recursion, so 1,000-level payloads are fine. Pushing children\nin reverse makes the stack pop them in their original order, which reproduces a\ndepth-first, order-preserving walk. Non-empty containers expand. Empty containers and\nscalars become leaves, and empty containers are stored as-is so their column survives.",
+        "timeComplexity": "O(total nodes + total key length)",
+        "spaceComplexity": "O(total nodes)"
+      }
+    }
+  ]
+}

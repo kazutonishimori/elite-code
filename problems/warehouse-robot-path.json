@@ -1,0 +1,72 @@
+{
+  "schemaVersion": 1,
+  "id": "warehouse-robot-path",
+  "title": "Warehouse Robot Path",
+  "type": "standard",
+  "difficulty": "medium",
+  "tags": [
+    "bfs",
+    "graph",
+    "array"
+  ],
+  "summary": "Find the fewest moves for a warehouse robot to reach a pick location around shelving.",
+  "starterCode": "def shortest_path(grid: list[str], start: tuple[int, int], goal: tuple[int, int]) -> int:\n    \"\"\"Fewest 4-directional moves from start to goal, or -1.\"\"\"\n    raise NotImplementedError\n",
+  "estimatedMinutes": 20,
+  "companies": [
+    "Amazon Robotics",
+    "Ocado"
+  ],
+  "topics": [
+    "logistics"
+  ],
+  "stages": [
+    {
+      "id": "bfs",
+      "title": "Fewest moves",
+      "requirement": "The warehouse floor is a grid of strings: `\".\"` is open floor and `\"#\"` is shelving. The robot\nmoves one cell up, down, left or right per move and can't leave the grid or enter shelving.\nWrite `shortest_path(grid, start, goal)`, where positions are `(row, col)`, returning the\nfewest moves from `start` to `goal`, or `-1` if it can't get there. If `start == goal`, return\n`0`. If either position is a shelf, return `-1`.\n\n```python\ngrid = [\n    \"..#.\",\n    \".##.\",\n    \"....\",\n]\nshortest_path(grid, (0, 0), (0, 3))  # -> 7\n```\n\nGrids are up to 500 x 500.",
+      "visibleTests": [
+        {
+          "name": "test_example",
+          "code": "def test_example():\n    grid = [\"..#.\", \".##.\", \"....\"]\n    assert shortest_path(grid, (0, 0), (0, 3)) == 7\n"
+        },
+        {
+          "name": "test_blocked",
+          "code": "def test_blocked():\n    assert shortest_path([\".#.\"], (0, 0), (0, 2)) == -1\n"
+        }
+      ],
+      "hiddenTests": [
+        {
+          "name": "test_start_is_goal",
+          "code": "def test_start_is_goal():\n    assert shortest_path([\".\"], (0, 0), (0, 0)) == 0\n"
+        },
+        {
+          "name": "test_goal_on_shelf",
+          "code": "def test_goal_on_shelf():\n    assert shortest_path([\".#\"], (0, 0), (0, 1)) == -1\n"
+        },
+        {
+          "name": "test_no_diagonal_moves",
+          "code": "def test_no_diagonal_moves():\n    assert shortest_path([\"..\", \"..\"], (0, 0), (1, 1)) == 2\n"
+        },
+        {
+          "name": "test_detour",
+          "code": "def test_detour():\n    grid = [\n        \".....\",\n        \"####.\",\n        \".....\",\n        \".####\",\n        \".....\",\n    ]\n    assert shortest_path(grid, (0, 0), (4, 4)) == 16\n"
+        },
+        {
+          "name": "test_large_open_floor",
+          "description": "DFS with backtracking, or revisiting cells, is far too slow here.",
+          "code": "def test_large_open_floor():\n    grid = [\".\" * 500] * 500\n    assert shortest_path(grid, (0, 0), (499, 499)) == 998\n"
+        }
+      ],
+      "hints": [
+        "Every move costs the same, so which graph search finds shortest paths in unweighted graphs?",
+        "BFS from `start` with a queue of `(row, col, distance)`. Mark cells visited when you enqueue them, not when you dequeue them."
+      ],
+      "solution": {
+        "code": "from collections import deque\n\n\ndef shortest_path(grid: list[str], start: tuple[int, int], goal: tuple[int, int]) -> int:\n    rows, cols = len(grid), len(grid[0]) if grid else 0\n    if grid[start[0]][start[1]] == \"#\" or grid[goal[0]][goal[1]] == \"#\":\n        return -1\n    seen = {start}\n    queue = deque([(start, 0)])\n    while queue:\n        (r, c), dist = queue.popleft()\n        if (r, c) == goal:\n            return dist\n        for nr, nc in ((r + 1, c), (r - 1, c), (r, c + 1), (r, c - 1)):\n            if 0 <= nr < rows and 0 <= nc < cols and grid[nr][nc] == \".\" and (nr, nc) not in seen:\n                seen.add((nr, nc))\n                queue.append(((nr, nc), dist + 1))\n    return -1\n",
+        "explanation": "BFS explores cells in order of distance, so the first time it reaches the goal is the\nshortest path. Marking cells as seen when they're enqueued means each cell enters the\nqueue once, which keeps the search linear in the number of cells.",
+        "timeComplexity": "O(R * C)",
+        "spaceComplexity": "O(R * C)"
+      }
+    }
+  ]
+}

@@ -1,0 +1,76 @@
+{
+  "schemaVersion": 1,
+  "id": "meeting-rooms",
+  "title": "Minimum Meeting Rooms",
+  "type": "standard",
+  "difficulty": "medium",
+  "tags": [
+    "intervals",
+    "heap",
+    "sorting"
+  ],
+  "summary": "Work out how many rooms an office needs to host every booked meeting.",
+  "starterCode": "def min_rooms(meetings: list[tuple[int, int]]) -> int:\n    \"\"\"Minimum rooms so no two overlapping meetings share a room.\"\"\"\n    raise NotImplementedError\n",
+  "estimatedMinutes": 20,
+  "companies": [
+    "Google",
+    "Meta"
+  ],
+  "topics": [
+    "calendars"
+  ],
+  "stages": [
+    {
+      "id": "min-rooms",
+      "title": "Minimum rooms",
+      "requirement": "Meetings are `(start, end)` pairs of minutes with `start < end`. A meeting occupies its room\non the half-open interval `[start, end)`: one meeting can start in a room the instant\nanother ends. Write `min_rooms(meetings)` returning the minimum number of rooms needed to\nhost all of them. Return 0 for no meetings.\n\n```python\nmin_rooms([(0, 30), (5, 10), (15, 20)])  # -> 2\nmin_rooms([(7, 10), (2, 4)])             # -> 1\nmin_rooms([(1, 5), (5, 10)])             # -> 1   (back to back)\n```\n\nUp to 100,000 meetings, in any order.",
+      "visibleTests": [
+        {
+          "name": "test_example",
+          "code": "def test_example():\n    assert min_rooms([(0, 30), (5, 10), (15, 20)]) == 2\n"
+        },
+        {
+          "name": "test_disjoint",
+          "code": "def test_disjoint():\n    assert min_rooms([(7, 10), (2, 4)]) == 1\n"
+        },
+        {
+          "name": "test_back_to_back",
+          "code": "def test_back_to_back():\n    assert min_rooms([(1, 5), (5, 10)]) == 1\n"
+        }
+      ],
+      "hiddenTests": [
+        {
+          "name": "test_empty",
+          "code": "def test_empty():\n    assert min_rooms([]) == 0\n"
+        },
+        {
+          "name": "test_all_identical",
+          "code": "def test_all_identical():\n    assert min_rooms([(3, 9)] * 5) == 5\n"
+        },
+        {
+          "name": "test_nested",
+          "code": "def test_nested():\n    assert min_rooms([(0, 100), (10, 20), (15, 30), (25, 40)]) == 3\n"
+        },
+        {
+          "name": "test_large",
+          "code": "def test_large():\n    meetings = [(i, i + 3) for i in range(100_000)]\n    assert min_rooms(meetings) == 3\n"
+        },
+        {
+          "name": "test_matches_sweep_brute_force",
+          "code": "def test_matches_sweep_brute_force():\n    import random\n    rng = random.Random(11)\n    meetings = []\n    for _ in range(200):\n        s = rng.randint(0, 500)\n        meetings.append((s, s + rng.randint(1, 60)))\n    peak = max(sum(1 for s, e in meetings if s <= t < e) for t in range(600))\n    assert min_rooms(meetings) == peak\n"
+        }
+      ],
+      "hints": [
+        "Process meetings in order of start time. When a meeting starts, which room is the best to reuse?",
+        "Keep a min-heap of end times for rooms in use. If the earliest end is `<=` the new start, reuse that room.",
+        "Alternative: sort all starts and all ends separately, then sweep with two pointers, counting concurrent meetings."
+      ],
+      "solution": {
+        "code": "import heapq\n\n\ndef min_rooms(meetings: list[tuple[int, int]]) -> int:\n    ends: list[int] = []\n    for start, end in sorted(meetings):\n        if ends and ends[0] <= start:\n            heapq.heapreplace(ends, end)\n        else:\n            heapq.heappush(ends, end)\n    return len(ends)\n",
+        "explanation": "Sort by start and keep a min-heap of the end times of busy rooms. If the room that frees\nup earliest is free by the new meeting's start (`<=`, since intervals are half-open),\nreuse it with `heapreplace`. Otherwise open a new room. The heap size never shrinks, so\nits final size is the peak number of concurrent meetings.",
+        "timeComplexity": "O(n log n)",
+        "spaceComplexity": "O(n)"
+      }
+    }
+  ]
+}

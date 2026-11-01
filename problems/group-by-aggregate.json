@@ -1,0 +1,70 @@
+{
+  "schemaVersion": 1,
+  "id": "group-by-aggregate",
+  "title": "Group By and Aggregate",
+  "type": "standard",
+  "difficulty": "easy",
+  "tags": [
+    "aggregation",
+    "hash-map",
+    "data-processing"
+  ],
+  "summary": "Summarize order rows per region: count, total, average and max, with missing values handled.",
+  "starterCode": "def summarize(rows: list[dict], key: str, value: str) -> dict[str, dict]:\n    \"\"\"Per group: count, sum, avg (2 decimals) and max of the value column.\"\"\"\n    raise NotImplementedError\n",
+  "estimatedMinutes": 15,
+  "companies": [
+    "Databricks"
+  ],
+  "topics": [
+    "analytics"
+  ],
+  "stages": [
+    {
+      "id": "summarize",
+      "title": "Summarize per group",
+      "requirement": "Rows are dicts. Write `summarize(rows, key, value)` that groups rows by `row[key]` and\nreturns `{group: {\"count\": int, \"sum\": number, \"avg\": float, \"max\": number}}` computed over\nthe `value` column.\n\n- Rows where the value is **missing or `None`** are skipped entirely: they don't count.\n  A group with no usable rows doesn't appear at all.\n- Rows missing the `key` column are skipped.\n- `avg` is `sum / count` rounded to 2 decimals with `round()`.\n\n```python\nrows = [\n    {\"region\": \"eu\", \"amount\": 10},\n    {\"region\": \"us\", \"amount\": 5},\n    {\"region\": \"eu\", \"amount\": 20},\n    {\"region\": \"us\", \"amount\": None},\n]\nsummarize(rows, \"region\", \"amount\")\n# -> {\"eu\": {\"count\": 2, \"sum\": 30, \"avg\": 15.0, \"max\": 20},\n#     \"us\": {\"count\": 1, \"sum\": 5, \"avg\": 5.0, \"max\": 5}}\n```",
+      "visibleTests": [
+        {
+          "name": "test_example",
+          "code": "def test_example():\n    rows = [\n        {\"region\": \"eu\", \"amount\": 10},\n        {\"region\": \"us\", \"amount\": 5},\n        {\"region\": \"eu\", \"amount\": 20},\n        {\"region\": \"us\", \"amount\": None},\n    ]\n    assert summarize(rows, \"region\", \"amount\") == {\n        \"eu\": {\"count\": 2, \"sum\": 30, \"avg\": 15.0, \"max\": 20},\n        \"us\": {\"count\": 1, \"sum\": 5, \"avg\": 5.0, \"max\": 5},\n    }\n"
+        }
+      ],
+      "hiddenTests": [
+        {
+          "name": "test_empty",
+          "code": "def test_empty():\n    assert summarize([], \"k\", \"v\") == {}\n"
+        },
+        {
+          "name": "test_group_with_only_nulls_is_omitted",
+          "code": "def test_group_with_only_nulls_is_omitted():\n    rows = [{\"k\": \"a\", \"v\": None}, {\"k\": \"b\", \"v\": 1}, {\"k\": \"a\"}]\n    assert summarize(rows, \"k\", \"v\") == {\"b\": {\"count\": 1, \"sum\": 1, \"avg\": 1.0, \"max\": 1}}\n"
+        },
+        {
+          "name": "test_rows_without_key_are_skipped",
+          "code": "def test_rows_without_key_are_skipped():\n    assert summarize([{\"v\": 3}], \"k\", \"v\") == {}\n"
+        },
+        {
+          "name": "test_rounding_and_negatives",
+          "code": "def test_rounding_and_negatives():\n    rows = [{\"k\": \"x\", \"v\": -1}, {\"k\": \"x\", \"v\": 2}, {\"k\": \"x\", \"v\": 0}]\n    assert summarize(rows, \"k\", \"v\") == {\"x\": {\"count\": 3, \"sum\": 1, \"avg\": 0.33, \"max\": 2}}\n"
+        },
+        {
+          "name": "test_float_values",
+          "code": "def test_float_values():\n    rows = [{\"k\": \"x\", \"v\": 0.1}, {\"k\": \"x\", \"v\": 0.2}]\n    out = summarize(rows, \"k\", \"v\")[\"x\"]\n    assert out[\"count\"] == 2 and out[\"avg\"] == 0.15 and out[\"max\"] == 0.2\n"
+        },
+        {
+          "name": "test_zero_is_not_missing",
+          "code": "def test_zero_is_not_missing():\n    assert summarize([{\"k\": \"z\", \"v\": 0}], \"k\", \"v\") == {\"z\": {\"count\": 1, \"sum\": 0, \"avg\": 0.0, \"max\": 0}}\n"
+        }
+      ],
+      "hints": [
+        "Accumulate count, sum and max per group in one pass, then compute averages at the end.",
+        "Watch the falsy trap: `if row.get(value):` skips legitimate zeros. Compare against `None` explicitly."
+      ],
+      "solution": {
+        "code": "def summarize(rows: list[dict], key: str, value: str) -> dict[str, dict]:\n    acc: dict[str, dict] = {}\n    for row in rows:\n        if key not in row or row.get(value) is None:\n            continue\n        v = row[value]\n        g = acc.get(row[key])\n        if g is None:\n            acc[row[key]] = {\"count\": 1, \"sum\": v, \"max\": v}\n        else:\n            g[\"count\"] += 1\n            g[\"sum\"] += v\n            g[\"max\"] = max(g[\"max\"], v)\n    for g in acc.values():\n        g[\"avg\"] = round(g[\"sum\"] / g[\"count\"], 2)\n    return acc\n",
+        "explanation": "One pass accumulates count, sum and max per group, and a second short pass computes\naverages. The key correctness detail is treating `0` as a real value: test `is None`\nrather than truthiness. Groups only get created when a usable row arrives, so all-null\ngroups never appear.",
+        "timeComplexity": "O(n)",
+        "spaceComplexity": "O(g) for g groups"
+      }
+    }
+  ]
+}

@@ -1,0 +1,209 @@
+{
+  "schemaVersion": 1,
+  "id": "rate-limiter-simulation",
+  "title": "API Rate Limiter",
+  "type": "simulation",
+  "difficulty": "hard",
+  "tags": [
+    "design",
+    "sliding-window",
+    "queue"
+  ],
+  "summary": "Build an API gateway's rate limiter, then evolve it as traffic patterns and product needs change.",
+  "starterCode": "class RateLimiter:\n    def __init__(self, limit: int, window: int):\n        pass\n\n    def allow(self, now: int) -> bool:\n        pass\n",
+  "estimatedMinutes": 60,
+  "companies": [
+    "Stripe",
+    "Cloudflare",
+    "GitHub"
+  ],
+  "topics": [
+    "api gateways"
+  ],
+  "stages": [
+    {
+      "id": "fixed-window",
+      "title": "Fixed window",
+      "requirement": "Let's start simple. Our API gateway needs a rate limiter. Implement\n`RateLimiter(limit, window)` with `allow(now) -> bool`, where `now` is an integer\ntimestamp in seconds (non-decreasing across calls).\n\nTime is split into **fixed windows** `[k*window, (k+1)*window)`. Each window allows at\nmost `limit` requests: `allow` returns `True` and counts the request, or `False` once\nthe window's budget is spent. Rejected requests don't count against anything.\n\n```python\nrl = RateLimiter(limit=2, window=10)\nrl.allow(0)   # True\nrl.allow(5)   # True\nrl.allow(9)   # False (window [0, 10) is full)\nrl.allow(10)  # True  (new window)\n```",
+      "visibleTests": [
+        {
+          "name": "test_example",
+          "code": "def test_example():\n    rl = RateLimiter(limit=2, window=10)\n    assert [rl.allow(t) for t in (0, 5, 9, 10)] == [True, True, False, True]\n"
+        },
+        {
+          "name": "test_windows_are_aligned",
+          "description": "Windows are aligned to multiples of `window`, not to the first request.",
+          "code": "def test_windows_are_aligned():\n    rl = RateLimiter(limit=1, window=10)\n    assert rl.allow(9) is True\n    assert rl.allow(10) is True\n    assert rl.allow(19) is False\n"
+        }
+      ],
+      "hiddenTests": [
+        {
+          "name": "test_rejections_do_not_count",
+          "code": "def test_rejections_do_not_count():\n    rl = RateLimiter(limit=1, window=5)\n    assert rl.allow(0) is True\n    assert all(rl.allow(t) is False for t in (1, 2, 3, 4))\n    assert rl.allow(5) is True\n"
+        },
+        {
+          "name": "test_skipped_windows",
+          "code": "def test_skipped_windows():\n    rl = RateLimiter(limit=3, window=60)\n    assert rl.allow(0) and rl.allow(0) and rl.allow(0)\n    assert rl.allow(1000) is True\n"
+        },
+        {
+          "name": "test_many_requests_same_second",
+          "code": "def test_many_requests_same_second():\n    rl = RateLimiter(limit=100, window=1)\n    results = [rl.allow(42) for _ in range(150)]\n    assert results.count(True) == 100\n    assert results[:100] == [True] * 100\n"
+        }
+      ],
+      "hints": [
+        "Which window does `now` fall in? Integer division gives you a window id.",
+        "Remember the current window id and a counter. Reset the counter when the window id changes."
+      ],
+      "solution": {
+        "code": "class RateLimiter:\n    def __init__(self, limit: int, window: int):\n        self.limit = limit\n        self.window = window\n        self._current_window = None\n        self._count = 0\n\n    def allow(self, now: int) -> bool:\n        window_id = now // self.window\n        if window_id != self._current_window:\n            self._current_window = window_id\n            self._count = 0\n        if self._count >= self.limit:\n            return False\n        self._count += 1\n        return True\n",
+        "explanation": "`now // window` identifies the fixed window. Keeping just the current window id and a\ncounter gives O(1) time and O(1) memory. Only accepted requests increment the counter.\nThe known weakness, worth naming in an interview, is the boundary burst: up to\n`2 * limit` requests can pass in a short span straddling two windows.",
+        "timeComplexity": "O(1) per request",
+        "spaceComplexity": "O(1)"
+      }
+    },
+    {
+      "id": "per-user",
+      "title": "Per-user limits",
+      "requirement": "Nice. One global budget means a noisy client starves everyone else. Make limits per user:\n\n- `allow(now, user_id=\"\")`: each `user_id` has its own fixed-window budget. Calls\n  without a `user_id` share the `\"\"` bucket, so stage 1 behavior is unchanged.\n- `set_limit(user_id, limit)` overrides the default `limit` for one user (e.g. paid tier).\n  It applies from the next call on, and the user's current count is kept.\n\n```python\nrl = RateLimiter(limit=1, window=60)\nrl.set_limit(\"pro\", 3)\nrl.allow(0, \"free\")  # True\nrl.allow(1, \"free\")  # False\nrl.allow(2, \"pro\")   # True (x3 in total)\n```",
+      "visibleTests": [
+        {
+          "name": "test_users_have_separate_budgets",
+          "code": "def test_users_have_separate_budgets():\n    rl = RateLimiter(limit=1, window=60)\n    assert rl.allow(0, \"a\") is True\n    assert rl.allow(0, \"b\") is True\n    assert rl.allow(1, \"a\") is False\n"
+        },
+        {
+          "name": "test_custom_limit",
+          "code": "def test_custom_limit():\n    rl = RateLimiter(limit=1, window=60)\n    rl.set_limit(\"pro\", 3)\n    assert [rl.allow(t, \"pro\") for t in range(4)] == [True, True, True, False]\n"
+        }
+      ],
+      "hiddenTests": [
+        {
+          "name": "test_default_user_shares_bucket",
+          "code": "def test_default_user_shares_bucket():\n    rl = RateLimiter(limit=2, window=10)\n    assert rl.allow(0) and rl.allow(1, \"\")\n    assert rl.allow(2) is False\n"
+        },
+        {
+          "name": "test_raising_limit_mid_window_keeps_count",
+          "code": "def test_raising_limit_mid_window_keeps_count():\n    rl = RateLimiter(limit=1, window=10)\n    assert rl.allow(0, \"u\") is True\n    assert rl.allow(1, \"u\") is False\n    rl.set_limit(\"u\", 2)\n    assert rl.allow(2, \"u\") is True\n    assert rl.allow(3, \"u\") is False\n"
+        },
+        {
+          "name": "test_users_windows_reset_independently",
+          "code": "def test_users_windows_reset_independently():\n    rl = RateLimiter(limit=1, window=10)\n    assert rl.allow(9, \"a\") is True\n    assert rl.allow(10, \"b\") is True\n    assert rl.allow(10, \"a\") is True\n"
+        },
+        {
+          "name": "test_many_users",
+          "code": "def test_many_users():\n    rl = RateLimiter(limit=2, window=60)\n    for u in range(10_000):\n        assert rl.allow(0, f\"u{u}\") is True\n    assert rl.allow(1, \"u5\") is True\n    assert rl.allow(2, \"u5\") is False\n"
+        }
+      ],
+      "hints": [
+        "The single counter becomes a counter *per user*.",
+        "Map `user_id -> (window_id, count)`, and look up the effective limit as `overrides.get(user_id, default)`.",
+        "Default `user_id=\"\"` keeps stage 1 calls working unchanged."
+      ],
+      "solution": {
+        "code": "class RateLimiter:\n    def __init__(self, limit: int, window: int):\n        self.limit = limit\n        self.window = window\n        self._limits: dict[str, int] = {}\n        # user -> (window_id, count)\n        self._state: dict[str, tuple[int, int]] = {}\n\n    def set_limit(self, user_id: str, limit: int) -> None:\n        self._limits[user_id] = limit\n\n    def allow(self, now: int, user_id: str = \"\") -> bool:\n        limit = self._limits.get(user_id, self.limit)\n        window_id = now // self.window\n        current, count = self._state.get(user_id, (window_id, 0))\n        if current != window_id:\n            count = 0\n        if count >= limit:\n            self._state[user_id] = (window_id, count)\n            return False\n        self._state[user_id] = (window_id, count + 1)\n        return True\n",
+        "explanation": "The window-and-counter pair becomes per-user state in a dict, and the limit is\nresolved per call from an override map. Defaulting `user_id` to `\"\"` makes the old\nsingle-bucket behavior a special case, so stage 1 tests still pass. Memory now grows\nwith active users. In production you'd evict idle users or keep this state in Redis.",
+        "timeComplexity": "O(1) per request",
+        "spaceComplexity": "O(users)"
+      }
+    },
+    {
+      "id": "sliding-window",
+      "title": "Sliding window",
+      "requirement": "Customers are gaming the window boundaries, sending `limit` requests at 0:59 and `limit`\nmore at 1:00. Add a mode:\n\n- `RateLimiter(limit, window, mode=\"fixed\")`. The default `\"fixed\"` keeps today's behavior.\n- With `mode=\"sliding\"`, a request at `now` is allowed if the user had fewer than their\n  limit **accepted** requests in the last `window` seconds, i.e. with timestamps in\n  `(now - window, now]`.\n- Any other mode raises `ValueError`. Per-user limits apply in both modes.\n\n```python\nrl = RateLimiter(limit=2, window=10, mode=\"sliding\")\nrl.allow(0); rl.allow(9)   # True, True\nrl.allow(10)               # True  (the request at 0 is now outside (0, 10])\nrl.allow(11)               # False (9 and 10 are inside (1, 11])\n```",
+      "visibleTests": [
+        {
+          "name": "test_sliding_example",
+          "code": "def test_sliding_example():\n    rl = RateLimiter(limit=2, window=10, mode=\"sliding\")\n    assert [rl.allow(t) for t in (0, 9, 10, 11)] == [True, True, True, False]\n"
+        },
+        {
+          "name": "test_boundary_burst_blocked",
+          "description": "The fixed window would allow this burst; the sliding window must not.",
+          "code": "def test_boundary_burst_blocked():\n    rl = RateLimiter(limit=2, window=60, mode=\"sliding\")\n    assert rl.allow(59) and rl.allow(59)\n    assert rl.allow(60) is False\n"
+        }
+      ],
+      "hiddenTests": [
+        {
+          "name": "test_default_mode_is_fixed",
+          "code": "def test_default_mode_is_fixed():\n    rl = RateLimiter(limit=2, window=60)\n    assert rl.allow(59) and rl.allow(59)\n    assert rl.allow(60) is True\n"
+        },
+        {
+          "name": "test_unknown_mode",
+          "code": "def test_unknown_mode():\n    try:\n        RateLimiter(1, 1, mode=\"leaky\")\n    except ValueError:\n        return\n    raise AssertionError(\"expected ValueError\")\n"
+        },
+        {
+          "name": "test_sliding_per_user_limits",
+          "code": "def test_sliding_per_user_limits():\n    rl = RateLimiter(limit=1, window=10, mode=\"sliding\")\n    rl.set_limit(\"vip\", 2)\n    assert rl.allow(0, \"vip\") and rl.allow(1, \"vip\")\n    assert rl.allow(2, \"vip\") is False\n    assert rl.allow(2, \"free\") is True\n"
+        },
+        {
+          "name": "test_rejected_requests_do_not_extend_the_window",
+          "code": "def test_rejected_requests_do_not_extend_the_window():\n    rl = RateLimiter(limit=1, window=10, mode=\"sliding\")\n    assert rl.allow(0) is True\n    assert rl.allow(5) is False\n    assert rl.allow(10) is True\n"
+        },
+        {
+          "name": "test_sliding_scale",
+          "description": "Twice the allowed rate for a long stretch: exactly half gets through.",
+          "code": "def test_sliding_scale():\n    rl = RateLimiter(limit=1000, window=100, mode=\"sliding\")\n    # 20 requests/second for 10,000 seconds against a 10/second budget.\n    accepted = sum(rl.allow(t // 20) for t in range(200_000))\n    assert accepted == 100_000\n"
+        }
+      ],
+      "hints": [
+        "To count requests in `(now - window, now]` you need the timestamps of recent accepted requests, not just a counter.",
+        "Keep a deque of accepted timestamps per user. Drop timestamps `<= now - window` from the left, then compare the length with the limit.",
+        "Keep both strategies side by side, chosen by `mode`. Fixed mode must behave exactly as before."
+      ],
+      "solution": {
+        "code": "from collections import defaultdict, deque\n\n\nclass RateLimiter:\n    def __init__(self, limit: int, window: int, mode: str = \"fixed\"):\n        if mode not in (\"fixed\", \"sliding\"):\n            raise ValueError(f\"unknown mode {mode!r}\")\n        self.limit = limit\n        self.window = window\n        self.mode = mode\n        self._limits: dict[str, int] = {}\n        self._fixed: dict[str, tuple[int, int]] = {}\n        self._log: dict[str, deque[int]] = defaultdict(deque)\n\n    def set_limit(self, user_id: str, limit: int) -> None:\n        self._limits[user_id] = limit\n\n    def _allow_fixed(self, user_id: str, limit: int, now: int) -> bool:\n        window_id = now // self.window\n        current, count = self._fixed.get(user_id, (window_id, 0))\n        if current != window_id:\n            count = 0\n        if count >= limit:\n            self._fixed[user_id] = (window_id, count)\n            return False\n        self._fixed[user_id] = (window_id, count + 1)\n        return True\n\n    def _allow_sliding(self, user_id: str, limit: int, now: int) -> bool:\n        log = self._log[user_id]\n        while log and log[0] <= now - self.window:\n            log.popleft()\n        if len(log) >= limit:\n            return False\n        log.append(now)\n        return True\n\n    def allow(self, now: int, user_id: str = \"\") -> bool:\n        limit = self._limits.get(user_id, self.limit)\n        if self.mode == \"sliding\":\n            return self._allow_sliding(user_id, limit, now)\n        return self._allow_fixed(user_id, limit, now)\n",
+        "explanation": "The sliding log keeps each user's accepted timestamps in a deque. Expired entries are\npopped from the left, so each timestamp is pushed and popped once (amortized O(1)),\nand the window is exact. The fixed-window path is untouched behind `mode`. The cost is\nO(limit) memory per user. If that matters, the sliding-window *counter*\napproximation interpolates between two fixed windows.",
+        "timeComplexity": "O(1) amortized per request",
+        "spaceComplexity": "O(users * limit) for sliding mode"
+      }
+    },
+    {
+      "id": "token-bucket",
+      "title": "Burst allowance",
+      "requirement": "Last one. Mobile clients reconnect in bursts, and product wants to allow short bursts\nwhile keeping the long-run rate. Add `mode=\"token_bucket\"` and a `burst` parameter:\n`RateLimiter(limit, window, mode=\"fixed\", burst=0)`.\n\nIn token-bucket mode, each user has a bucket with capacity `limit + burst` that **starts\nfull**. It refills continuously at `limit` tokens per `window` seconds, never above\ncapacity. A request is allowed if the bucket holds **at least one whole token**, which\nit consumes. Rejected requests consume nothing. Per-user `set_limit` changes both the\nrefill rate and the capacity.\n\nUse exact arithmetic: refill amounts can be fractional (`fractions.Fraction` helps), and\nfloat drift will fail the tests.\n\n```python\nrl = RateLimiter(limit=2, window=10, mode=\"token_bucket\", burst=1)\n[rl.allow(0) for _ in range(4)]  # [True, True, True, False]  capacity 3\nrl.allow(5)                      # True  (refilled 1 token in 5s)\nrl.allow(5)                      # False\n```",
+      "visibleTests": [
+        {
+          "name": "test_bucket_example",
+          "code": "def test_bucket_example():\n    rl = RateLimiter(limit=2, window=10, mode=\"token_bucket\", burst=1)\n    assert [rl.allow(0) for _ in range(4)] == [True, True, True, False]\n    assert rl.allow(5) is True\n    assert rl.allow(5) is False\n"
+        },
+        {
+          "name": "test_refill_caps_at_capacity",
+          "code": "def test_refill_caps_at_capacity():\n    rl = RateLimiter(limit=1, window=1, mode=\"token_bucket\", burst=2)\n    assert [rl.allow(0) for _ in range(3)] == [True] * 3\n    assert [rl.allow(1000) for _ in range(4)] == [True, True, True, False]\n"
+        }
+      ],
+      "hiddenTests": [
+        {
+          "name": "test_fractional_refill_is_exact",
+          "description": "Floating point accumulates error here; 0.1 + 0.9 must be exactly 1.",
+          "code": "def test_fractional_refill_is_exact():\n    rl = RateLimiter(limit=3, window=10, mode=\"token_bucket\")\n    assert [rl.allow(0) for _ in range(3)] == [True] * 3\n    assert rl.allow(3) is False   # 0.9 tokens\n    assert rl.allow(4) is True    # 0.9 + 0.3 = 1.2 tokens\n    assert rl.allow(7) is True    # 0.2 + 0.9 = 1.1 tokens\n    assert rl.allow(10) is True   # 0.1 + 0.9 = 1.0 token exactly\n    assert rl.allow(10) is False\n"
+        },
+        {
+          "name": "test_per_user_buckets_and_limits",
+          "code": "def test_per_user_buckets_and_limits():\n    rl = RateLimiter(limit=1, window=10, mode=\"token_bucket\")\n    rl.set_limit(\"pro\", 3)\n    assert [rl.allow(0, \"pro\") for _ in range(4)] == [True, True, True, False]\n    assert rl.allow(0, \"free\") is True\n    assert rl.allow(0, \"free\") is False\n"
+        },
+        {
+          "name": "test_zero_burst_matches_limit",
+          "code": "def test_zero_burst_matches_limit():\n    rl = RateLimiter(limit=2, window=10, mode=\"token_bucket\")\n    assert [rl.allow(0) for _ in range(3)] == [True, True, False]\n"
+        },
+        {
+          "name": "test_other_modes_unaffected_by_burst",
+          "code": "def test_other_modes_unaffected_by_burst():\n    rl = RateLimiter(limit=1, window=10, mode=\"sliding\", burst=5)\n    assert rl.allow(0) is True\n    assert rl.allow(1) is False\n"
+        },
+        {
+          "name": "test_long_run_rate",
+          "description": "Bursts are bounded: the long-run rate stays at limit per window.",
+          "code": "def test_long_run_rate():\n    rl = RateLimiter(limit=5, window=10, mode=\"token_bucket\", burst=5)\n    accepted = sum(rl.allow(t) for t in range(0, 10_000) for _ in range(3))\n    # 12 while the full bucket drains (t=0..4), then one every 2 seconds (t=6, 8, ...).\n    assert accepted == 12 + 4997\n"
+        }
+      ],
+      "hints": [
+        "Each user's state is now just a token count and the last time you refilled it.",
+        "On each request: add `limit * elapsed / window` tokens, cap at `limit + burst`, then try to take one. With `Fraction` the arithmetic stays exact.",
+        "Three algorithms now share one interface. Pulling each into a small strategy class with `allow(user_id, limit, now)` keeps `RateLimiter` simple."
+      ],
+      "solution": {
+        "code": "from collections import defaultdict, deque\nfrom fractions import Fraction\n\n\nclass FixedWindow:\n    def __init__(self, window: int):\n        self.window = window\n        self.state: dict[str, tuple[int, int]] = {}\n\n    def allow(self, user_id: str, limit: int, now: int) -> bool:\n        window_id = now // self.window\n        current, count = self.state.get(user_id, (window_id, 0))\n        if current != window_id:\n            count = 0\n        if count >= limit:\n            self.state[user_id] = (window_id, count)\n            return False\n        self.state[user_id] = (window_id, count + 1)\n        return True\n\n\nclass SlidingLog:\n    def __init__(self, window: int):\n        self.window = window\n        self.logs: dict[str, deque[int]] = defaultdict(deque)\n\n    def allow(self, user_id: str, limit: int, now: int) -> bool:\n        log = self.logs[user_id]\n        while log and log[0] <= now - self.window:\n            log.popleft()\n        if len(log) >= limit:\n            return False\n        log.append(now)\n        return True\n\n\nclass TokenBucket:\n    def __init__(self, window: int, burst: int):\n        self.window = window\n        self.burst = burst\n        # user -> (tokens, last_refill_time); exact arithmetic avoids float drift\n        self.buckets: dict[str, tuple[Fraction, int]] = {}\n\n    def allow(self, user_id: str, limit: int, now: int) -> bool:\n        capacity = limit + self.burst\n        tokens, last = self.buckets.get(user_id, (Fraction(capacity), now))\n        tokens = min(Fraction(capacity), tokens + Fraction(limit * (now - last), self.window))\n        if tokens >= 1:\n            self.buckets[user_id] = (tokens - 1, now)\n            return True\n        self.buckets[user_id] = (tokens, now)\n        return False\n\n\nclass RateLimiter:\n    def __init__(self, limit: int, window: int, mode: str = \"fixed\", burst: int = 0):\n        strategies = {\n            \"fixed\": lambda: FixedWindow(window),\n            \"sliding\": lambda: SlidingLog(window),\n            \"token_bucket\": lambda: TokenBucket(window, burst),\n        }\n        if mode not in strategies:\n            raise ValueError(f\"unknown mode {mode!r}\")\n        self.limit = limit\n        self.window = window\n        self.mode = mode\n        self._limits: dict[str, int] = {}\n        self._strategy = strategies[mode]()\n\n    def set_limit(self, user_id: str, limit: int) -> None:\n        self._limits[user_id] = limit\n\n    def allow(self, now: int, user_id: str = \"\") -> bool:\n        return self._strategy.allow(user_id, self._limits.get(user_id, self.limit), now)\n",
+        "explanation": "The token bucket stores `(tokens, last_refill)` per user and refills lazily on each\nrequest with exact `Fraction` math, capped at `limit + burst`. With three algorithms,\nthe refactor is to pull each into a strategy object with a common\n`allow(user_id, limit, now)` method and pick one in the constructor. Per-user limits\nstay in `RateLimiter`, and every earlier mode keeps its exact behavior.",
+        "timeComplexity": "O(1) per request (amortized for sliding)",
+        "spaceComplexity": "O(users)"
+      }
+    }
+  ]
+}

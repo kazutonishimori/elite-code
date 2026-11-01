@@ -1,0 +1,74 @@
+{
+  "schemaVersion": 1,
+  "id": "merge-user-identities",
+  "title": "Merge User Identities",
+  "type": "standard",
+  "difficulty": "medium",
+  "tags": [
+    "union-find",
+    "graph",
+    "deduplication"
+  ],
+  "summary": "Merge customer records from several systems into unique people via shared emails.",
+  "starterCode": "def merge_identities(records: list[list[str]]) -> list[list[str]]:\n    \"\"\"Each record is [name, email, ...]. Return merged [name, *sorted emails] lists.\"\"\"\n    raise NotImplementedError\n",
+  "estimatedMinutes": 30,
+  "companies": [
+    "Salesforce",
+    "Segment"
+  ],
+  "topics": [
+    "identity resolution"
+  ],
+  "stages": [
+    {
+      "id": "merge",
+      "title": "Merge identities",
+      "requirement": "Each record from our CRM, billing and support systems is `[name, email1, email2, ...]`.\nTwo records belong to the same person if they share **any** email, and that sharing is\ntransitive. Write `merge_identities(records)` returning one list per person:\n`[name, *emails]` with the person's distinct emails **sorted**.\n\n- Use the name from the **earliest record** (lowest index) in the group.\n- Order people by the index of their earliest record.\n- Emails compare case-insensitively and are output **lowercased**.\n- A record may have no emails. It is then its own person, `[name]`.\n\n```python\nmerge_identities([\n    [\"Ada\", \"ada@x.com\", \"a@y.com\"],\n    [\"Bob\", \"bob@x.com\"],\n    [\"Ada L.\", \"A@Y.com\", \"ada@z.com\"],\n])\n# -> [[\"Ada\", \"a@y.com\", \"ada@x.com\", \"ada@z.com\"], [\"Bob\", \"bob@x.com\"]]\n```\n\nUp to 20,000 records with up to 10 emails each.",
+      "visibleTests": [
+        {
+          "name": "test_example",
+          "code": "def test_example():\n    records = [\n        [\"Ada\", \"ada@x.com\", \"a@y.com\"],\n        [\"Bob\", \"bob@x.com\"],\n        [\"Ada L.\", \"A@Y.com\", \"ada@z.com\"],\n    ]\n    assert merge_identities(records) == [[\"Ada\", \"a@y.com\", \"ada@x.com\", \"ada@z.com\"], [\"Bob\", \"bob@x.com\"]]\n"
+        }
+      ],
+      "hiddenTests": [
+        {
+          "name": "test_transitive_chain",
+          "description": "Records 0 and 1 only connect through records 2 and 3.",
+          "code": "def test_transitive_chain():\n    records = [[\"A\", \"1@x\"], [\"B\", \"2@x\"], [\"C\", \"1@x\", \"3@x\"], [\"D\", \"3@x\", \"2@x\"]]\n    assert merge_identities(records) == [[\"A\", \"1@x\", \"2@x\", \"3@x\"]]\n"
+        },
+        {
+          "name": "test_record_without_email",
+          "code": "def test_record_without_email():\n    assert merge_identities([[\"Solo\"], [\"Ann\", \"a@x\"]]) == [[\"Solo\"], [\"Ann\", \"a@x\"]]\n"
+        },
+        {
+          "name": "test_duplicate_emails_in_one_record",
+          "code": "def test_duplicate_emails_in_one_record():\n    assert merge_identities([[\"Z\", \"z@x\", \"Z@X\"]]) == [[\"Z\", \"z@x\"]]\n"
+        },
+        {
+          "name": "test_same_name_different_people",
+          "code": "def test_same_name_different_people():\n    assert merge_identities([[\"Sam\", \"s1@x\"], [\"Sam\", \"s2@x\"]]) == [[\"Sam\", \"s1@x\"], [\"Sam\", \"s2@x\"]]\n"
+        },
+        {
+          "name": "test_empty",
+          "code": "def test_empty():\n    assert merge_identities([]) == []\n"
+        },
+        {
+          "name": "test_large_chain",
+          "description": "Recursive DFS over 20k records hits the recursion limit, so use iteration or union-find.",
+          "code": "def test_large_chain():\n    records = [[f\"P{i}\", f\"e{i}@x\", f\"e{i + 1}@x\"] for i in range(20_000)]\n    out = merge_identities(records)\n    assert len(out) == 1\n    assert out[0][0] == \"P0\"\n    assert len(out[0]) == 20_002\n"
+        }
+      ],
+      "hints": [
+        "Think of records as nodes connected when they share an email. You want the connected components.",
+        "Union-find works well: map each lowercased email to the first record that used it, and union later records with that one.",
+        "Union by the smaller index (or track each component's minimum record index) to get the earliest name and the output order. Avoid recursion depth issues with iterative `find`."
+      ],
+      "solution": {
+        "code": "def merge_identities(records: list[list[str]]) -> list[list[str]]:\n    parent = list(range(len(records)))\n\n    def find(x: int) -> int:\n        root = x\n        while parent[root] != root:\n            root = parent[root]\n        while parent[x] != root:\n            parent[x], x = root, parent[x]\n        return root\n\n    def union(a: int, b: int) -> None:\n        ra, rb = find(a), find(b)\n        if ra != rb:\n            # The smaller index becomes the root: it is the earliest record.\n            parent[max(ra, rb)] = min(ra, rb)\n\n    owner: dict[str, int] = {}\n    for i, record in enumerate(records):\n        for email in record[1:]:\n            email = email.lower()\n            if email in owner:\n                union(i, owner[email])\n            else:\n                owner[email] = i\n\n    emails: dict[int, set[str]] = {}\n    for i, record in enumerate(records):\n        group = emails.setdefault(find(i), set())\n        group.update(e.lower() for e in record[1:])\n    return [[records[root][0], *sorted(group)] for root, group in sorted(emails.items())]\n",
+        "explanation": "Records sharing an email are unioned. An `email -> first record` map keeps that linear\nrather than pairwise. Making the smaller index the root means every component's root is\nits earliest record, which gives both the name to use and the output order. `find` is\niterative with path compression, so 20k-long chains don't overflow the stack.",
+        "timeComplexity": "O(E α(n)) for E total emails",
+        "spaceComplexity": "O(n + E)"
+      }
+    }
+  ]
+}

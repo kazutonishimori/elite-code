@@ -1,0 +1,73 @@
+{
+  "schemaVersion": 1,
+  "id": "smallest-incident-window",
+  "title": "Smallest Incident Window",
+  "type": "standard",
+  "difficulty": "hard",
+  "tags": [
+    "sliding-window",
+    "hash-map",
+    "two-pointers"
+  ],
+  "summary": "Find the shortest stretch of a log that contains every error code involved in an incident.",
+  "starterCode": "def smallest_window(log: list[str], codes: list[str]) -> tuple[int, int] | None:\n    \"\"\"Inclusive (start, end) of the shortest window containing all codes, or None.\"\"\"\n    raise NotImplementedError\n",
+  "estimatedMinutes": 35,
+  "companies": [
+    "PagerDuty",
+    "Splunk"
+  ],
+  "topics": [
+    "incident response"
+  ],
+  "stages": [
+    {
+      "id": "window",
+      "title": "Shortest covering window",
+      "requirement": "`log` is a list of event codes in time order. An incident involves the codes in `codes`,\nwhich may contain duplicates: `[\"E1\", \"E1\"]` means `\"E1\"` must appear **twice**. Write\n`smallest_window(log, codes)` returning the inclusive index range `(start, end)` of the\nshortest contiguous window containing every required code (with multiplicity), or `None`.\nOn ties, return the window that starts **earliest**. If `codes` is empty, return `None`.\n\n```python\nlog = [\"OK\", \"E2\", \"E1\", \"OK\", \"E3\", \"E1\", \"E2\", \"OK\"]\nsmallest_window(log, [\"E1\", \"E2\", \"E3\"])  # -> (4, 6)\n```\n\nUp to 200,000 log entries.",
+      "visibleTests": [
+        {
+          "name": "test_example",
+          "code": "def test_example():\n    log = [\"OK\", \"E2\", \"E1\", \"OK\", \"E3\", \"E1\", \"E2\", \"OK\"]\n    assert smallest_window(log, [\"E1\", \"E2\", \"E3\"]) == (4, 6)\n"
+        },
+        {
+          "name": "test_missing_code",
+          "code": "def test_missing_code():\n    assert smallest_window([\"A\", \"B\"], [\"C\"]) is None\n"
+        }
+      ],
+      "hiddenTests": [
+        {
+          "name": "test_multiplicity",
+          "code": "def test_multiplicity():\n    log = [\"E1\", \"X\", \"E1\", \"E2\", \"E1\"]\n    assert smallest_window(log, [\"E1\", \"E1\", \"E2\"]) == (2, 4)\n"
+        },
+        {
+          "name": "test_tie_prefers_earliest",
+          "code": "def test_tie_prefers_earliest():\n    assert smallest_window([\"A\", \"B\", \"A\", \"B\"], [\"A\", \"B\"]) == (0, 1)\n"
+        },
+        {
+          "name": "test_single_element",
+          "code": "def test_single_element():\n    assert smallest_window([\"Z\"], [\"Z\"]) == (0, 0)\n"
+        },
+        {
+          "name": "test_empty_inputs",
+          "code": "def test_empty_inputs():\n    assert smallest_window([], [\"A\"]) is None\n    assert smallest_window([\"A\"], []) is None\n"
+        },
+        {
+          "name": "test_large",
+          "description": "Checking every start position against every end is quadratic.",
+          "code": "def test_large():\n    log = [\"noise\"] * 200_000\n    log[150_000] = \"A\"\n    log[150_010] = \"B\"\n    log[10] = \"A\"\n    log[199_999] = \"B\"\n    assert smallest_window(log, [\"A\", \"B\"]) == (150_000, 150_010)\n"
+        }
+      ],
+      "hints": [
+        "Expand a right pointer until the window covers every code, then shrink from the left while it still covers.",
+        "Track `need[code]` counts and how many requirements are currently satisfied, so 'is the window complete?' is O(1).",
+        "Record a window only when it is strictly shorter than the best so far. That keeps the earliest start on ties."
+      ],
+      "solution": {
+        "code": "from collections import Counter\n\n\ndef smallest_window(log: list[str], codes: list[str]) -> tuple[int, int] | None:\n    if not codes:\n        return None\n    need = Counter(codes)\n    missing = len(codes)\n    have: Counter[str] = Counter()\n    best: tuple[int, int] | None = None\n    left = 0\n    for right, code in enumerate(log):\n        if code in need:\n            have[code] += 1\n            if have[code] <= need[code]:\n                missing -= 1\n        while missing == 0:\n            if best is None or right - left < best[1] - best[0]:\n                best = (left, right)\n            out = log[left]\n            if out in need:\n                have[out] -= 1\n                if have[out] < need[out]:\n                    missing += 1\n            left += 1\n    return best\n",
+        "explanation": "This is the classic minimum window substring. `missing` counts outstanding required\noccurrences, so window completeness is O(1). The right pointer grows the window, and\nonce it's complete the left pointer shrinks it while recording candidates. Requiring a\n*strictly* shorter window keeps the earliest start on ties. Each index enters and\nleaves the window once.",
+        "timeComplexity": "O(n + m)",
+        "spaceComplexity": "O(m) for m distinct codes"
+      }
+    }
+  ]
+}

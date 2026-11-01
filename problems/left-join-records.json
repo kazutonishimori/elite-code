@@ -1,0 +1,73 @@
+{
+  "schemaVersion": 1,
+  "id": "left-join-records",
+  "title": "Left Join Records",
+  "type": "standard",
+  "difficulty": "medium",
+  "tags": [
+    "joins",
+    "hash-map",
+    "data-processing"
+  ],
+  "summary": "Implement a SQL-style LEFT JOIN over two lists of dicts, with one-to-many matches and column clashes.",
+  "starterCode": "def left_join(left: list[dict], right: list[dict], on: str) -> list[dict]:\n    \"\"\"LEFT JOIN left to right on the given column.\"\"\"\n    raise NotImplementedError\n",
+  "estimatedMinutes": 25,
+  "companies": [
+    "Databricks",
+    "Snowflake"
+  ],
+  "topics": [
+    "sql"
+  ],
+  "stages": [
+    {
+      "id": "left-join",
+      "title": "LEFT JOIN",
+      "requirement": "Write `left_join(left, right, on)` with SQL `LEFT JOIN` semantics over lists of dicts:\n\n- Every left row appears in the output at least once, **in left order**.\n- For each left row, emit one output row per matching right row (`right[on] == left[on]`),\n  with matches in **right order** (one-to-many).\n- A left row with no match is emitted once, with every right-only column set to `None`.\n  The right-only columns are the union of keys across **all** right rows, minus `on`.\n- Column clash: if a non-`on` column exists in both rows, the left value is kept under its\n  name, and the right value goes to `\"<column>_right\"`.\n- Rows whose `on` value is `None` never match (like SQL `NULL`).\n- Don't mutate the inputs.\n\n```python\nusers = [{\"id\": 1, \"name\": \"ada\"}, {\"id\": 2, \"name\": \"bob\"}]\norders = [{\"id\": 1, \"total\": 10}, {\"id\": 1, \"total\": 5}]\nleft_join(users, orders, \"id\")\n# -> [{\"id\": 1, \"name\": \"ada\", \"total\": 10},\n#     {\"id\": 1, \"name\": \"ada\", \"total\": 5},\n#     {\"id\": 2, \"name\": \"bob\", \"total\": None}]\n```\n\nUp to 50,000 rows on each side, so avoid nested loops.",
+      "visibleTests": [
+        {
+          "name": "test_example",
+          "code": "def test_example():\n    users = [{\"id\": 1, \"name\": \"ada\"}, {\"id\": 2, \"name\": \"bob\"}]\n    orders = [{\"id\": 1, \"total\": 10}, {\"id\": 1, \"total\": 5}]\n    assert left_join(users, orders, \"id\") == [\n        {\"id\": 1, \"name\": \"ada\", \"total\": 10},\n        {\"id\": 1, \"name\": \"ada\", \"total\": 5},\n        {\"id\": 2, \"name\": \"bob\", \"total\": None},\n    ]\n"
+        }
+      ],
+      "hiddenTests": [
+        {
+          "name": "test_column_clash",
+          "code": "def test_column_clash():\n    left = [{\"k\": 1, \"status\": \"active\"}]\n    right = [{\"k\": 1, \"status\": \"shipped\"}]\n    assert left_join(left, right, \"k\") == [{\"k\": 1, \"status\": \"active\", \"status_right\": \"shipped\"}]\n"
+        },
+        {
+          "name": "test_unmatched_gets_union_of_right_columns",
+          "description": "Matched rows only carry their own columns; unmatched rows get None for every right column.",
+          "code": "def test_unmatched_gets_union_of_right_columns():\n    left = [{\"k\": 1}, {\"k\": 9}]\n    right = [{\"k\": 1, \"a\": \"x\"}, {\"k\": 2, \"b\": \"y\"}]\n    assert left_join(left, right, \"k\") == [\n        {\"k\": 1, \"a\": \"x\"},\n        {\"k\": 9, \"a\": None, \"b\": None},\n    ]\n"
+        },
+        {
+          "name": "test_none_keys_never_match",
+          "code": "def test_none_keys_never_match():\n    left = [{\"k\": None, \"v\": 1}]\n    right = [{\"k\": None, \"w\": 2}]\n    assert left_join(left, right, \"k\") == [{\"k\": None, \"v\": 1, \"w\": None}]\n"
+        },
+        {
+          "name": "test_empty_inputs",
+          "code": "def test_empty_inputs():\n    assert left_join([], [{\"k\": 1}], \"k\") == []\n    assert left_join([{\"k\": 1}], [], \"k\") == [{\"k\": 1}]\n"
+        },
+        {
+          "name": "test_inputs_not_mutated",
+          "code": "def test_inputs_not_mutated():\n    left = [{\"k\": 1}]\n    right = [{\"k\": 1, \"x\": 2}]\n    left_join(left, right, \"k\")\n    assert left == [{\"k\": 1}] and right == [{\"k\": 1, \"x\": 2}]\n"
+        },
+        {
+          "name": "test_large",
+          "code": "def test_large():\n    left = [{\"id\": i, \"l\": i} for i in range(50_000)]\n    right = [{\"id\": i % 25_000, \"r\": i} for i in range(50_000)]\n    out = left_join(left, right, \"id\")\n    assert len(out) == 75_000\n    assert out[0] == {\"id\": 0, \"l\": 0, \"r\": 0}\n    assert out[1] == {\"id\": 0, \"l\": 0, \"r\": 25_000}\n    assert out[-1] == {\"id\": 49_999, \"l\": 49_999, \"r\": None}\n"
+        }
+      ],
+      "hints": [
+        "This is a hash join: index the right side by the join key once, then probe it for each left row.",
+        "Build `dict[key, list[row]]` for the right side, skipping `None` keys. Collect the union of right columns while you're at it.",
+        "For each output row, start from a copy of the left row, then add right columns, renaming clashes to `<col>_right`."
+      ],
+      "solution": {
+        "code": "from collections import defaultdict\n\n\ndef left_join(left: list[dict], right: list[dict], on: str) -> list[dict]:\n    index: dict[object, list[dict]] = defaultdict(list)\n    right_columns: dict[str, None] = {}\n    for row in right:\n        for col in row:\n            if col != on:\n                right_columns.setdefault(col)\n        if row.get(on) is not None:\n            index[row[on]].append(row)\n\n    def merge(l_row: dict, r_row: dict) -> dict:\n        out = dict(l_row)\n        for col, val in r_row.items():\n            if col == on:\n                continue\n            out[f\"{col}_right\" if col in l_row else col] = val\n        return out\n\n    result: list[dict] = []\n    for row in left:\n        matches = index.get(row.get(on)) if row.get(on) is not None else None\n        if matches:\n            result.extend(merge(row, m) for m in matches)\n        else:\n            result.append(merge(row, dict.fromkeys(right_columns)))\n    return result\n",
+        "explanation": "A hash join: one pass over the right side builds `key -> [rows]` (skipping `None`, which\nnever matches) and collects the union of right columns. Each left row then probes the\nindex. Matched rows merge each right row in right order. Unmatched rows merge a\nsynthetic all-`None` row, so they get every right column. Merging into a fresh `dict`\nleaves the inputs untouched.",
+        "timeComplexity": "O(L + R + output size)",
+        "spaceComplexity": "O(R + output size)"
+      }
+    }
+  ]
+}

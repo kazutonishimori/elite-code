@@ -1,0 +1,72 @@
+{
+  "schemaVersion": 1,
+  "id": "matching-refunds",
+  "title": "Matching Refunds",
+  "type": "standard",
+  "difficulty": "easy",
+  "tags": [
+    "hash-map",
+    "array"
+  ],
+  "summary": "Find the first pair of ledger entries that cancel each other out exactly.",
+  "starterCode": "def find_refund_pair(amounts: list[int]) -> tuple[int, int] | None:\n    \"\"\"Return indices (i, j), i < j, of the first pair summing to zero, or None.\"\"\"\n    raise NotImplementedError\n",
+  "estimatedMinutes": 10,
+  "companies": [
+    "Stripe"
+  ],
+  "topics": [
+    "payments"
+  ],
+  "stages": [
+    {
+      "id": "find-pair",
+      "title": "Find a cancelling pair",
+      "requirement": "A ledger is a list of integer amounts in cents: charges are positive, refunds negative.\nWrite `find_refund_pair(amounts)` returning the indices `(i, j)` with `i < j` of a pair whose\namounts sum to exactly zero, or `None` if there isn't one.\n\nIf several pairs qualify, return the one whose **second index `j` is smallest**. If that\nstill ties, take the smallest `i`. Note that `0` paired with another `0` counts.\n\n```python\nfind_refund_pair([500, -200, 300, -500, 200])  # -> (0, 3)\nfind_refund_pair([100, 200])                   # -> None\n```\n\nUp to 200,000 entries.",
+      "visibleTests": [
+        {
+          "name": "test_example",
+          "code": "def test_example():\n    assert find_refund_pair([500, -200, 300, -500, 200]) == (0, 3)\n"
+        },
+        {
+          "name": "test_no_pair",
+          "code": "def test_no_pair():\n    assert find_refund_pair([100, 200]) is None\n"
+        }
+      ],
+      "hiddenTests": [
+        {
+          "name": "test_empty_and_single",
+          "code": "def test_empty_and_single():\n    assert find_refund_pair([]) is None\n    assert find_refund_pair([0]) is None\n"
+        },
+        {
+          "name": "test_two_zeros",
+          "code": "def test_two_zeros():\n    assert find_refund_pair([7, 0, 3, 0]) == (1, 3)\n"
+        },
+        {
+          "name": "test_earliest_second_index",
+          "description": "(1, 2) completes before (0, 3).",
+          "code": "def test_earliest_second_index():\n    assert find_refund_pair([5, 9, -9, -5]) == (1, 2)\n"
+        },
+        {
+          "name": "test_smallest_first_index_on_tie",
+          "code": "def test_smallest_first_index_on_tie():\n    assert find_refund_pair([4, 4, -4]) == (0, 2)\n"
+        },
+        {
+          "name": "test_large_input",
+          "description": "Quadratic scans time out here.",
+          "code": "def test_large_input():\n    amounts = list(range(1, 200_001))\n    amounts.append(-199_999)\n    assert find_refund_pair(amounts) == (199_998, 200_000)\n"
+        }
+      ],
+      "hints": [
+        "As you scan left to right, what would you need to remember about earlier entries to recognise a match immediately?",
+        "Keep a dict from amount to the earliest index where it appeared. For each new amount `x`, look up `-x`.",
+        "Only store an amount the first time you see it, so the smallest `i` wins ties."
+      ],
+      "solution": {
+        "code": "def find_refund_pair(amounts: list[int]) -> tuple[int, int] | None:\n    first_seen: dict[int, int] = {}\n    for j, amount in enumerate(amounts):\n        i = first_seen.get(-amount)\n        if i is not None:\n            return (i, j)\n        first_seen.setdefault(amount, j)\n    return None\n",
+        "explanation": "Scanning left to right, the first time a complement exists we have found the pair with the\nsmallest `j`. Recording only each amount's **first** index guarantees the smallest `i` for\nthat `j`. The lookup happens before the insert, so an element never pairs with itself, and\ntwo zeros still pair correctly.",
+        "timeComplexity": "O(n)",
+        "spaceComplexity": "O(n)"
+      }
+    }
+  ]
+}

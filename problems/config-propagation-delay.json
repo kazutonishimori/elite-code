@@ -1,0 +1,76 @@
+{
+  "schemaVersion": 1,
+  "id": "config-propagation-delay",
+  "title": "Config Propagation Delay",
+  "type": "standard",
+  "difficulty": "medium",
+  "tags": [
+    "graph",
+    "heap"
+  ],
+  "summary": "Compute how long a config push takes to reach every service in a weighted network.",
+  "starterCode": "def propagation_delay(n: int, links: list[tuple[int, int, int]], source: int) -> int:\n    \"\"\"Time (ms) until all n services have the config, or -1 if some never do.\"\"\"\n    raise NotImplementedError\n",
+  "estimatedMinutes": 25,
+  "companies": [
+    "Cloudflare",
+    "Netflix"
+  ],
+  "topics": [
+    "distributed systems"
+  ],
+  "stages": [
+    {
+      "id": "delay",
+      "title": "Time to reach every service",
+      "requirement": "Services are numbered `0..n-1`. A config push starts at `source` at time 0. Each link\n`(a, b, ms)` means service `a` forwards the config to `b`, arriving `ms` milliseconds later.\nLinks are **one-directional** and `ms >= 0`. A service forwards immediately on receipt.\n\nWrite `propagation_delay(n, links, source)` returning the time when the **last** service\nreceives the config, or `-1` if some service is unreachable.\n\n```python\npropagation_delay(4, [(0, 1, 5), (0, 2, 1), (2, 1, 2), (1, 3, 1)], 0)  # -> 4\n# 0 -> 2 (1ms) -> 1 (3ms) -> 3 (4ms)\n```\n\nUp to 20,000 services and 100,000 links. There may be several links between the same pair.",
+      "visibleTests": [
+        {
+          "name": "test_example",
+          "code": "def test_example():\n    assert propagation_delay(4, [(0, 1, 5), (0, 2, 1), (2, 1, 2), (1, 3, 1)], 0) == 4\n"
+        },
+        {
+          "name": "test_unreachable",
+          "code": "def test_unreachable():\n    assert propagation_delay(3, [(0, 1, 1)], 0) == -1\n"
+        }
+      ],
+      "hiddenTests": [
+        {
+          "name": "test_single_service",
+          "code": "def test_single_service():\n    assert propagation_delay(1, [], 0) == 0\n"
+        },
+        {
+          "name": "test_links_are_directed",
+          "code": "def test_links_are_directed():\n    assert propagation_delay(2, [(1, 0, 1)], 0) == -1\n"
+        },
+        {
+          "name": "test_parallel_links_use_fastest",
+          "code": "def test_parallel_links_use_fastest():\n    assert propagation_delay(2, [(0, 1, 9), (0, 1, 2)], 0) == 2\n"
+        },
+        {
+          "name": "test_zero_weight_links",
+          "code": "def test_zero_weight_links():\n    assert propagation_delay(3, [(0, 1, 0), (1, 2, 0)], 0) == 0\n"
+        },
+        {
+          "name": "test_longer_path_with_fewer_ms",
+          "description": "Fewest hops is not fastest: BFS gets this wrong.",
+          "code": "def test_longer_path_with_fewer_ms():\n    assert propagation_delay(3, [(0, 2, 10), (0, 1, 1), (1, 2, 1)], 0) == 2\n"
+        },
+        {
+          "name": "test_large_grid",
+          "code": "def test_large_grid():\n    n = 20_000\n    links = [(i, i + 1, 1) for i in range(n - 1)] + [(0, i, n) for i in range(1, n)]\n    assert propagation_delay(n, links, 0) == n - 1\n"
+        }
+      ],
+      "hints": [
+        "Unweighted BFS counts hops, not milliseconds. Which algorithm finds shortest weighted paths with non-negative weights?",
+        "Dijkstra: pop the service with the smallest known arrival time from a min-heap and relax its outgoing links.",
+        "Skip stale heap entries (time greater than the best known). The answer is the max over all arrival times, or -1 if any is unreached."
+      ],
+      "solution": {
+        "code": "import heapq\nfrom collections import defaultdict\n\n\ndef propagation_delay(n: int, links: list[tuple[int, int, int]], source: int) -> int:\n    graph: dict[int, list[tuple[int, int]]] = defaultdict(list)\n    for a, b, ms in links:\n        graph[a].append((b, ms))\n    best = [None] * n\n    best[source] = 0\n    heap = [(0, source)]\n    while heap:\n        time, node = heapq.heappop(heap)\n        if time > best[node]:\n            continue\n        for nxt, ms in graph[node]:\n            arrival = time + ms\n            if best[nxt] is None or arrival < best[nxt]:\n                best[nxt] = arrival\n                heapq.heappush(heap, (arrival, nxt))\n    return -1 if any(t is None for t in best) else max(best)\n",
+        "explanation": "This is single-source shortest paths with non-negative weights, so Dijkstra's algorithm\nfits. With a binary heap and lazy deletion (skipping popped entries that are worse than\nthe recorded best), each link is relaxed once. The time the last service hears about\nthe config is the maximum shortest-path distance.",
+        "timeComplexity": "O((V + E) log V)",
+        "spaceComplexity": "O(V + E)"
+      }
+    }
+  ]
+}

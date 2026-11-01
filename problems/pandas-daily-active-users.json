@@ -1,0 +1,72 @@
+{
+  "schemaVersion": 1,
+  "id": "pandas-daily-active-users",
+  "title": "Daily Active Users with pandas",
+  "type": "standard",
+  "difficulty": "medium",
+  "tags": [
+    "pandas",
+    "aggregation",
+    "time-series"
+  ],
+  "summary": "Compute daily active users and a 7-day rolling average from raw events using pandas.",
+  "starterCode": "import pandas as pd\n\n\ndef daily_active_users(events: pd.DataFrame) -> pd.DataFrame:\n    \"\"\"Columns: date, dau, dau_7d_avg.\"\"\"\n    raise NotImplementedError\n",
+  "packages": [
+    "pandas"
+  ],
+  "timeLimitSeconds": 10,
+  "estimatedMinutes": 25,
+  "companies": [
+    "Spotify",
+    "Duolingo"
+  ],
+  "topics": [
+    "product analytics"
+  ],
+  "stages": [
+    {
+      "id": "dau",
+      "title": "DAU with a rolling average",
+      "requirement": "`events` is a DataFrame with columns `user_id` (str) and `ts` (ISO-8601 strings in UTC,\ne.g. `\"2026-03-01T23:59:00Z\"`). Write `daily_active_users(events)` returning a DataFrame\nwith columns `date`, `dau` and `dau_7d_avg`:\n\n- `date`: a `datetime.date`, one row per calendar day (UTC) from the first to the last event\n  day **inclusive**. Days without events still appear, with `dau = 0`.\n- `dau`: the number of **distinct** users active that day (an `int`).\n- `dau_7d_avg`: the mean `dau` over that day and the previous 6 days, rounded to 2 decimals.\n  For the first days, average only over the days available so far.\n- Sorted by `date` with a default `RangeIndex`. An empty input returns an empty frame with\n  these three columns.\n\n```python\nevents = pd.DataFrame({\"user_id\": [\"a\", \"b\", \"a\", \"c\"],\n                       \"ts\": [\"2026-03-01T10:00:00Z\", \"2026-03-01T11:00:00Z\",\n                              \"2026-03-01T12:00:00Z\", \"2026-03-03T09:00:00Z\"]})\ndaily_active_users(events)\n#          date  dau  dau_7d_avg\n# 0  2026-03-01    2        2.00\n# 1  2026-03-02    0        1.00\n# 2  2026-03-03    1        1.00\n```",
+      "visibleTests": [
+        {
+          "name": "test_example",
+          "code": "import datetime as dt\nimport pandas as pd\n\ndef test_example():\n    events = pd.DataFrame({\n        \"user_id\": [\"a\", \"b\", \"a\", \"c\"],\n        \"ts\": [\"2026-03-01T10:00:00Z\", \"2026-03-01T11:00:00Z\", \"2026-03-01T12:00:00Z\", \"2026-03-03T09:00:00Z\"],\n    })\n    out = daily_active_users(events)\n    assert list(out.columns) == [\"date\", \"dau\", \"dau_7d_avg\"]\n    assert out[\"date\"].tolist() == [dt.date(2026, 3, 1), dt.date(2026, 3, 2), dt.date(2026, 3, 3)]\n    assert out[\"dau\"].tolist() == [2, 0, 1]\n    assert out[\"dau_7d_avg\"].tolist() == [2.0, 1.0, 1.0]\n"
+        }
+      ],
+      "hiddenTests": [
+        {
+          "name": "test_empty_input",
+          "code": "import pandas as pd\n\ndef test_empty_input():\n    out = daily_active_users(pd.DataFrame({\"user_id\": [], \"ts\": []}))\n    assert list(out.columns) == [\"date\", \"dau\", \"dau_7d_avg\"]\n    assert len(out) == 0\n"
+        },
+        {
+          "name": "test_utc_day_boundaries",
+          "code": "import datetime as dt\nimport pandas as pd\n\ndef test_utc_day_boundaries():\n    events = pd.DataFrame({\"user_id\": [\"a\", \"a\"], \"ts\": [\"2026-03-01T23:59:59Z\", \"2026-03-02T00:00:00Z\"]})\n    out = daily_active_users(events)\n    assert out[\"date\"].tolist() == [dt.date(2026, 3, 1), dt.date(2026, 3, 2)]\n    assert out[\"dau\"].tolist() == [1, 1]\n"
+        },
+        {
+          "name": "test_rolling_window_is_seven_days",
+          "code": "import pandas as pd\n\ndef test_rolling_window_is_seven_days():\n    days = [f\"2026-04-{d:02d}T12:00:00Z\" for d in range(1, 9)]\n    users = [[f\"u{i}\" for i in range(d)] for d in range(1, 9)]\n    rows = [(u, ts) for ts, us in zip(days, users) for u in us]\n    events = pd.DataFrame(rows, columns=[\"user_id\", \"ts\"])\n    out = daily_active_users(events)\n    assert out[\"dau\"].tolist() == [1, 2, 3, 4, 5, 6, 7, 8]\n    assert out[\"dau_7d_avg\"].tolist() == [1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 5.0]\n"
+        },
+        {
+          "name": "test_dtypes_and_index",
+          "code": "import pandas as pd\n\ndef test_dtypes_and_index():\n    events = pd.DataFrame({\"user_id\": [\"a\"], \"ts\": [\"2026-01-01T00:00:00Z\"]})\n    out = daily_active_users(events)\n    assert isinstance(out[\"dau\"].iloc[0].item(), int)\n    assert out.index.tolist() == [0]\n"
+        },
+        {
+          "name": "test_large",
+          "code": "import pandas as pd\n\ndef test_large():\n    n = 100_000\n    events = pd.DataFrame({\n        \"user_id\": [f\"u{i % 5000}\" for i in range(n)],\n        \"ts\": [f\"2026-05-{(i % 30) + 1:02d}T{(i % 24):02d}:00:00Z\" for i in range(n)],\n    })\n    out = daily_active_users(events)\n    assert len(out) == 30\n    assert out[\"dau\"].max() <= 5000\n"
+        }
+      ],
+      "hints": [
+        "Parse timestamps with `pd.to_datetime(..., utc=True)` and take `.dt.date`, or normalize to midnight.",
+        "`groupby(day)['user_id'].nunique()` gives DAU. Then `reindex` over a full `pd.date_range` to add zero-activity days.",
+        "`rolling(7, min_periods=1).mean()` handles the partial windows at the start."
+      ],
+      "solution": {
+        "code": "import pandas as pd\n\n\ndef daily_active_users(events: pd.DataFrame) -> pd.DataFrame:\n    columns = [\"date\", \"dau\", \"dau_7d_avg\"]\n    if events.empty:\n        return pd.DataFrame(columns=columns)\n    days = pd.to_datetime(events[\"ts\"], utc=True).dt.normalize()\n    dau = events.groupby(days)[\"user_id\"].nunique()\n    full_range = pd.date_range(dau.index.min(), dau.index.max(), freq=\"D\")\n    dau = dau.reindex(full_range, fill_value=0).astype(int)\n    return pd.DataFrame({\n        \"date\": [d.date() for d in dau.index],\n        \"dau\": dau.to_numpy(),\n        \"dau_7d_avg\": dau.rolling(7, min_periods=1).mean().round(2).to_numpy(),\n    })\n",
+        "explanation": "Normalize UTC timestamps to day starts and group with `nunique` for distinct users.\nReindexing over a complete `date_range` inserts the silent days as zeros, which matters\nfor both the output and the rolling mean. `rolling(7, min_periods=1)` averages over the\navailable days at the start. The final frame is built from plain arrays, so it gets a\nfresh `RangeIndex`.",
+        "timeComplexity": "O(n log n) for n events (parsing and grouping)",
+        "spaceComplexity": "O(n)"
+      }
+    }
+  ]
+}

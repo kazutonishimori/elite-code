@@ -1,0 +1,69 @@
+{
+  "schemaVersion": 1,
+  "id": "rolling-latency-average",
+  "title": "Rolling Latency Average",
+  "type": "standard",
+  "difficulty": "medium",
+  "tags": [
+    "sliding-window",
+    "queue",
+    "time-series"
+  ],
+  "summary": "Maintain a time-windowed average latency per endpoint as measurements stream in.",
+  "starterCode": "class LatencyMonitor:\n    def __init__(self, window_seconds: int):\n        pass\n\n    def record(self, endpoint: str, timestamp: int, latency_ms: int) -> None:\n        pass\n\n    def average(self, endpoint: str, now: int) -> float | None:\n        pass\n",
+  "estimatedMinutes": 25,
+  "companies": [
+    "Datadog",
+    "New Relic"
+  ],
+  "topics": [
+    "monitoring"
+  ],
+  "stages": [
+    {
+      "id": "rolling-average",
+      "title": "Windowed average",
+      "requirement": "Build `LatencyMonitor(window_seconds)`:\n\n- `record(endpoint, timestamp, latency_ms)` stores a measurement. Timestamps are integer\n  seconds and **non-decreasing across all calls** (a single clock).\n- `average(endpoint, now)` returns the mean latency of that endpoint's measurements with\n  `now - window_seconds < timestamp <= now`, rounded to 2 decimals, or `None` if there are none.\n  `now` is never earlier than the last recorded timestamp.\n\n```python\nm = LatencyMonitor(60)\nm.record(\"/login\", 0, 100)\nm.record(\"/login\", 30, 200)\nm.average(\"/login\", 30)   # -> 150.0\nm.average(\"/login\", 60)   # -> 200.0  (the t=0 sample left the window)\nm.average(\"/search\", 60)  # -> None\n```\n\nExpect up to 200,000 calls in total. Both methods should be amortized O(1).",
+      "visibleTests": [
+        {
+          "name": "test_example",
+          "code": "def test_example():\n    m = LatencyMonitor(60)\n    m.record(\"/login\", 0, 100)\n    m.record(\"/login\", 30, 200)\n    assert m.average(\"/login\", 30) == 150.0\n    assert m.average(\"/login\", 60) == 200.0\n    assert m.average(\"/search\", 60) is None\n"
+        }
+      ],
+      "hiddenTests": [
+        {
+          "name": "test_window_boundary_is_exclusive_on_the_left",
+          "code": "def test_window_boundary_is_exclusive_on_the_left():\n    m = LatencyMonitor(10)\n    m.record(\"a\", 5, 10)\n    assert m.average(\"a\", 14) == 10.0\n    assert m.average(\"a\", 15) is None\n"
+        },
+        {
+          "name": "test_endpoints_are_independent",
+          "code": "def test_endpoints_are_independent():\n    m = LatencyMonitor(100)\n    m.record(\"a\", 1, 10)\n    m.record(\"b\", 2, 30)\n    assert m.average(\"a\", 2) == 10.0\n    assert m.average(\"b\", 2) == 30.0\n"
+        },
+        {
+          "name": "test_rounding",
+          "code": "def test_rounding():\n    m = LatencyMonitor(100)\n    for t, v in [(1, 1), (2, 2), (3, 2)]:\n        m.record(\"x\", t, v)\n    assert m.average(\"x\", 3) == 1.67\n"
+        },
+        {
+          "name": "test_same_timestamp_many_samples",
+          "code": "def test_same_timestamp_many_samples():\n    m = LatencyMonitor(1)\n    for v in range(10):\n        m.record(\"x\", 7, v)\n    assert m.average(\"x\", 7) == 4.5\n    assert m.average(\"x\", 8) is None\n"
+        },
+        {
+          "name": "test_large_stream_is_fast",
+          "description": "Re-summing the whole window on every call is quadratic.",
+          "code": "def test_large_stream_is_fast():\n    m = LatencyMonitor(1000)\n    total = 0\n    for t in range(100_000):\n        m.record(\"hot\", t, t % 100)\n        if t % 10 == 0:\n            total += m.average(\"hot\", t)\n    window = [t % 100 for t in range(99_000, 100_000)]\n    assert m.average(\"hot\", 99_999) == round(sum(window) / len(window), 2)\n"
+        }
+      ],
+      "hints": [
+        "Per endpoint, measurements leave the window in the same order they arrived.",
+        "Keep a deque of `(timestamp, latency)` and a running sum per endpoint. Evict from the left while the oldest is out of the window.",
+        "Evict lazily inside `average` (and optionally `record`). Each sample is appended and popped once, which gives amortized O(1)."
+      ],
+      "solution": {
+        "code": "from collections import defaultdict, deque\n\n\nclass LatencyMonitor:\n    def __init__(self, window_seconds: int):\n        self.window = window_seconds\n        self.samples: dict[str, deque[tuple[int, int]]] = defaultdict(deque)\n        self.sums: dict[str, int] = defaultdict(int)\n\n    def _evict(self, endpoint: str, now: int) -> None:\n        q = self.samples[endpoint]\n        while q and q[0][0] <= now - self.window:\n            self.sums[endpoint] -= q.popleft()[1]\n\n    def record(self, endpoint: str, timestamp: int, latency_ms: int) -> None:\n        self.samples[endpoint].append((timestamp, latency_ms))\n        self.sums[endpoint] += latency_ms\n        self._evict(endpoint, timestamp)\n\n    def average(self, endpoint: str, now: int) -> float | None:\n        if endpoint not in self.samples:\n            return None\n        self._evict(endpoint, now)\n        q = self.samples[endpoint]\n        return round(self.sums[endpoint] / len(q), 2) if q else None\n",
+        "explanation": "Samples for an endpoint expire in arrival order, so a deque plus a running sum gives O(1)\namortized operations: append on `record`, pop from the left while the oldest timestamp\nis `<= now - window`, and divide the running sum by the deque length. Every sample is\nadded and removed at most once.",
+        "timeComplexity": "O(1) amortized per call",
+        "spaceComplexity": "O(samples in window)"
+      }
+    }
+  ]
+}

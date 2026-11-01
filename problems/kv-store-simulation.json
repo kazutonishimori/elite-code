@@ -1,0 +1,200 @@
+{
+  "schemaVersion": 1,
+  "id": "kv-store-simulation",
+  "title": "Key-Value Store",
+  "type": "simulation",
+  "difficulty": "hard",
+  "tags": [
+    "design",
+    "hash-map",
+    "caching"
+  ],
+  "summary": "Build an in-memory key-value store, then extend it as the interviewer adds requirements.",
+  "starterCode": "class KVStore:\n    def set(self, key: str, value: str) -> None:\n        pass\n\n    def get(self, key: str) -> str | None:\n        pass\n\n    def delete(self, key: str) -> bool:\n        pass\n\n    def keys(self, prefix: str = \"\") -> list[str]:\n        pass\n",
+  "estimatedMinutes": 60,
+  "companies": [
+    "Redis",
+    "Stripe",
+    "Coinbase"
+  ],
+  "topics": [
+    "databases"
+  ],
+  "stages": [
+    {
+      "id": "basic-operations",
+      "title": "Basic operations",
+      "requirement": "Let's build a tiny in-memory key-value store. Implement `KVStore` with:\n\n- `set(key, value)`: stores or overwrites a string value.\n- `get(key)`: the value, or `None` if the key doesn't exist.\n- `delete(key) -> bool`: removes the key. Returns `True` if it existed, else `False`.\n- `keys(prefix=\"\")`: all keys starting with `prefix`, sorted ascending.\n\n```python\nkv = KVStore()\nkv.set(\"user:1\", \"ada\")\nkv.set(\"user:2\", \"bob\")\nkv.set(\"order:9\", \"x\")\nkv.keys(\"user:\")   # -> [\"user:1\", \"user:2\"]\nkv.delete(\"user:1\")  # -> True\nkv.get(\"user:1\")   # -> None\n```",
+      "visibleTests": [
+        {
+          "name": "test_set_get_overwrite",
+          "code": "def test_set_get_overwrite():\n    kv = KVStore()\n    kv.set(\"a\", \"1\")\n    kv.set(\"a\", \"2\")\n    assert kv.get(\"a\") == \"2\"\n    assert kv.get(\"missing\") is None\n"
+        },
+        {
+          "name": "test_keys_with_prefix",
+          "code": "def test_keys_with_prefix():\n    kv = KVStore()\n    for k in [\"user:2\", \"order:9\", \"user:1\"]:\n        kv.set(k, \"x\")\n    assert kv.keys(\"user:\") == [\"user:1\", \"user:2\"]\n    assert kv.keys() == [\"order:9\", \"user:1\", \"user:2\"]\n"
+        }
+      ],
+      "hiddenTests": [
+        {
+          "name": "test_delete",
+          "code": "def test_delete():\n    kv = KVStore()\n    kv.set(\"a\", \"1\")\n    assert kv.delete(\"a\") is True\n    assert kv.delete(\"a\") is False\n    assert kv.get(\"a\") is None\n"
+        },
+        {
+          "name": "test_empty_string_value_is_a_value",
+          "code": "def test_empty_string_value_is_a_value():\n    kv = KVStore()\n    kv.set(\"a\", \"\")\n    assert kv.get(\"a\") == \"\"\n    assert kv.keys() == [\"a\"]\n"
+        },
+        {
+          "name": "test_stores_are_independent",
+          "code": "def test_stores_are_independent():\n    a, b = KVStore(), KVStore()\n    a.set(\"k\", \"v\")\n    assert b.get(\"k\") is None\n"
+        }
+      ],
+      "hints": [
+        "A dict does almost everything here.",
+        "For `delete`, `dict.pop(key, None)` tells you whether the key existed, but be careful with values that are falsy, like `\"\"`."
+      ],
+      "solution": {
+        "code": "class KVStore:\n    def __init__(self):\n        self._data: dict[str, str] = {}\n\n    def set(self, key: str, value: str) -> None:\n        self._data[key] = value\n\n    def get(self, key: str) -> str | None:\n        return self._data.get(key)\n\n    def delete(self, key: str) -> bool:\n        return self._data.pop(key, None) is not None\n\n    def keys(self, prefix: str = \"\") -> list[str]:\n        return sorted(k for k in self._data if k.startswith(prefix))\n",
+        "explanation": "A dict covers `set`, `get` and `delete`. `keys` filters with `startswith` and sorts,\nwhich is O(n log n) per call. That's fine for now, and it's worth mentioning a sorted\nstructure or trie if prefix scans become hot. Note `pop(key, None) is not None`:\nvalues are strings, so an empty-string value still counts as present.",
+        "timeComplexity": "O(1) set/get/delete; O(n log n) keys",
+        "spaceComplexity": "O(n)"
+      }
+    },
+    {
+      "id": "ttl",
+      "title": "Expiring keys",
+      "requirement": "Nice. Now product wants cache-style entries that expire. Extend the API **without breaking\nexisting calls**:\n\n- `set(key, value, ttl=None, now=0)`: with a `ttl` (seconds), the key expires at `now + ttl`.\n  With no `ttl` it never expires. Setting a key again replaces its TTL as well.\n- `get(key, now=0)`, `delete(key, now=0)` and `keys(prefix=\"\", now=0)` take the current time.\n  A key is **expired from `expires_at` onward** (`now >= expires_at`). Expired keys behave\n  exactly as if they didn't exist: `get` returns `None`, `delete` returns `False`, and `keys`\n  omits them.\n\nTime only moves forward.\n\n```python\nkv.set(\"session\", \"abc\", ttl=10, now=100)\nkv.get(\"session\", now=109)  # -> \"abc\"\nkv.get(\"session\", now=110)  # -> None\n```",
+      "visibleTests": [
+        {
+          "name": "test_expires_at_ttl",
+          "code": "def test_expires_at_ttl():\n    kv = KVStore()\n    kv.set(\"session\", \"abc\", ttl=10, now=100)\n    assert kv.get(\"session\", now=109) == \"abc\"\n    assert kv.get(\"session\", now=110) is None\n"
+        },
+        {
+          "name": "test_keys_skip_expired",
+          "code": "def test_keys_skip_expired():\n    kv = KVStore()\n    kv.set(\"a\", \"1\", ttl=5, now=0)\n    kv.set(\"b\", \"2\")\n    assert kv.keys(now=4) == [\"a\", \"b\"]\n    assert kv.keys(now=5) == [\"b\"]\n"
+        }
+      ],
+      "hiddenTests": [
+        {
+          "name": "test_reset_replaces_ttl",
+          "code": "def test_reset_replaces_ttl():\n    kv = KVStore()\n    kv.set(\"a\", \"1\", ttl=5, now=0)\n    kv.set(\"a\", \"2\", now=1)\n    assert kv.get(\"a\", now=1000) == \"2\"\n"
+        },
+        {
+          "name": "test_delete_expired_returns_false",
+          "code": "def test_delete_expired_returns_false():\n    kv = KVStore()\n    kv.set(\"a\", \"1\", ttl=1, now=0)\n    assert kv.delete(\"a\", now=1) is False\n"
+        },
+        {
+          "name": "test_extend_ttl_by_setting_again",
+          "code": "def test_extend_ttl_by_setting_again():\n    kv = KVStore()\n    kv.set(\"a\", \"1\", ttl=10, now=0)\n    kv.set(\"a\", \"1\", ttl=10, now=8)\n    assert kv.get(\"a\", now=17) == \"1\"\n    assert kv.get(\"a\", now=18) is None\n"
+        },
+        {
+          "name": "test_zero_ttl_is_immediately_expired",
+          "code": "def test_zero_ttl_is_immediately_expired():\n    kv = KVStore()\n    kv.set(\"a\", \"1\", ttl=0, now=3)\n    assert kv.get(\"a\", now=3) is None\n"
+        }
+      ],
+      "hints": [
+        "Each key now needs its value *and* an expiry time.",
+        "Store `(value, expires_at)` with `expires_at = None` for no TTL, and centralise the \"is it alive at `now`?\" check in one helper.",
+        "Defaults (`ttl=None`, `now=0`) keep every stage 1 call valid. Expire lazily on access rather than with a background sweep."
+      ],
+      "solution": {
+        "code": "class KVStore:\n    def __init__(self):\n        # key -> (value, expires_at or None)\n        self._data: dict[str, tuple[str, int | None]] = {}\n\n    def _live(self, key: str, now: int) -> tuple[str, int | None] | None:\n        entry = self._data.get(key)\n        if entry is None:\n            return None\n        if entry[1] is not None and now >= entry[1]:\n            del self._data[key]\n            return None\n        return entry\n\n    def set(self, key: str, value: str, ttl: int | None = None, now: int = 0) -> None:\n        self._data[key] = (value, None if ttl is None else now + ttl)\n\n    def get(self, key: str, now: int = 0) -> str | None:\n        entry = self._live(key, now)\n        return entry[0] if entry else None\n\n    def delete(self, key: str, now: int = 0) -> bool:\n        if self._live(key, now) is None:\n            return False\n        del self._data[key]\n        return True\n\n    def keys(self, prefix: str = \"\", now: int = 0) -> list[str]:\n        return sorted(k for k in list(self._data) if k.startswith(prefix) and self._live(k, now))\n",
+        "explanation": "Entries become `(value, expires_at)`, and a `_live(key, now)` helper is the single\nsource of truth for expiry. It also lazily purges dead entries. Every method gained an\noptional `now`, so stage 1 call sites still work. In production you'd add periodic\nsampling (as Redis does) so expired keys that are never read don't leak memory.",
+        "timeComplexity": "O(1) set/get/delete; O(n log n) keys",
+        "spaceComplexity": "O(n)"
+      }
+    },
+    {
+      "id": "transactions",
+      "title": "Transactions",
+      "requirement": "Customers want atomic updates. Add transactions:\n\n- `begin()` starts a transaction. Until it ends, every `set` and `delete` is **staged**:\n  reads (`get`, `keys`) during the transaction see the staged changes, but nothing is\n  applied to the store yet.\n- `commit()` applies all staged changes.\n- `rollback()` discards them.\n- `commit()` or `rollback()` with no open transaction raises `RuntimeError`.\n\nFor now you only need to support one transaction at a time. TTLs work as before, and a\nstaged `set` with a TTL keeps that TTL when committed.\n\n```python\nkv.set(\"balance\", \"10\")\nkv.begin()\nkv.set(\"balance\", \"5\")\nkv.get(\"balance\")   # -> \"5\"\nkv.rollback()\nkv.get(\"balance\")   # -> \"10\"\n```",
+      "visibleTests": [
+        {
+          "name": "test_rollback_discards",
+          "code": "def test_rollback_discards():\n    kv = KVStore()\n    kv.set(\"balance\", \"10\")\n    kv.begin()\n    kv.set(\"balance\", \"5\")\n    assert kv.get(\"balance\") == \"5\"\n    kv.rollback()\n    assert kv.get(\"balance\") == \"10\"\n"
+        },
+        {
+          "name": "test_commit_applies",
+          "code": "def test_commit_applies():\n    kv = KVStore()\n    kv.begin()\n    kv.set(\"a\", \"1\")\n    kv.commit()\n    assert kv.get(\"a\") == \"1\"\n"
+        }
+      ],
+      "hiddenTests": [
+        {
+          "name": "test_staged_delete_visible_then_rolled_back",
+          "code": "def test_staged_delete_visible_then_rolled_back():\n    kv = KVStore()\n    kv.set(\"a\", \"1\")\n    kv.begin()\n    assert kv.delete(\"a\") is True\n    assert kv.get(\"a\") is None\n    assert kv.keys() == []\n    kv.rollback()\n    assert kv.get(\"a\") == \"1\"\n"
+        },
+        {
+          "name": "test_commit_without_transaction_raises",
+          "code": "def test_commit_without_transaction_raises():\n    kv = KVStore()\n    for op in (kv.commit, kv.rollback):\n        try:\n            op()\n        except RuntimeError:\n            continue\n        raise AssertionError(f\"{op.__name__}() without begin() should raise RuntimeError\")\n"
+        },
+        {
+          "name": "test_keys_merge_staged_and_committed",
+          "code": "def test_keys_merge_staged_and_committed():\n    kv = KVStore()\n    kv.set(\"a\", \"1\")\n    kv.begin()\n    kv.set(\"b\", \"2\")\n    assert kv.keys() == [\"a\", \"b\"]\n    kv.rollback()\n    assert kv.keys() == [\"a\"]\n"
+        },
+        {
+          "name": "test_ttl_survives_commit",
+          "code": "def test_ttl_survives_commit():\n    kv = KVStore()\n    kv.begin()\n    kv.set(\"a\", \"1\", ttl=5, now=0)\n    kv.commit()\n    assert kv.get(\"a\", now=4) == \"1\"\n    assert kv.get(\"a\", now=5) is None\n"
+        },
+        {
+          "name": "test_delete_then_set_in_transaction",
+          "code": "def test_delete_then_set_in_transaction():\n    kv = KVStore()\n    kv.set(\"a\", \"old\")\n    kv.begin()\n    kv.delete(\"a\")\n    kv.set(\"a\", \"new\")\n    kv.commit()\n    assert kv.get(\"a\") == \"new\"\n"
+        }
+      ],
+      "hints": [
+        "Writes during a transaction need to go somewhere other than the main dict.",
+        "Keep a staging dict for the open transaction. Reads check it first and fall back to the committed data. A delete needs a *tombstone* marker so it can hide a committed key.",
+        "Commit replays the staged entries (sets and tombstones) into the main store. Rollback throws them away."
+      ],
+      "solution": {
+        "code": "_DELETED = object()\n\n\nclass KVStore:\n    def __init__(self):\n        # key -> (value, expires_at or None)\n        self._base: dict[str, tuple[str, int | None]] = {}\n        # Staged changes of the open transaction (key -> entry or _DELETED), or None.\n        self._staged: dict[str, object] | None = None\n\n    @staticmethod\n    def _expired(entry, now: int) -> bool:\n        return entry[1] is not None and now >= entry[1]\n\n    def _lookup(self, key: str):\n        if self._staged is not None and key in self._staged:\n            entry = self._staged[key]\n            return None if entry is _DELETED else entry\n        return self._base.get(key)\n\n    def _write(self, key: str, entry) -> None:\n        if self._staged is not None:\n            self._staged[key] = entry\n        elif entry is _DELETED:\n            self._base.pop(key, None)\n        else:\n            self._base[key] = entry\n\n    def set(self, key: str, value: str, ttl: int | None = None, now: int = 0) -> None:\n        self._write(key, (value, None if ttl is None else now + ttl))\n\n    def get(self, key: str, now: int = 0) -> str | None:\n        entry = self._lookup(key)\n        if entry is None or self._expired(entry, now):\n            return None\n        return entry[0]\n\n    def delete(self, key: str, now: int = 0) -> bool:\n        if self.get(key, now) is None:\n            return False\n        self._write(key, _DELETED)\n        return True\n\n    def keys(self, prefix: str = \"\", now: int = 0) -> list[str]:\n        candidates = set(self._base) | set(self._staged or ())\n        return sorted(k for k in candidates if k.startswith(prefix) and self.get(k, now) is not None)\n\n    def begin(self) -> None:\n        if self._staged is not None:\n            raise RuntimeError(\"a transaction is already open\")\n        self._staged = {}\n\n    def _end(self) -> dict[str, object]:\n        if self._staged is None:\n            raise RuntimeError(\"no transaction in progress\")\n        staged, self._staged = self._staged, None\n        return staged\n\n    def rollback(self) -> None:\n        self._end()\n\n    def commit(self) -> None:\n        for key, entry in self._end().items():\n            self._write(key, entry)\n",
+        "explanation": "The store is now layered: committed data lives in `_base`, and an open transaction is\na dict of staged entries on top of it. Reads check the staged dict first. Deletes\nwrite a `_DELETED` tombstone, so they can hide committed keys without touching them.\nCommit replays the layer into the base, and rollback drops it.",
+        "timeComplexity": "O(1) per op inside a transaction; O(staged) commit",
+        "spaceComplexity": "O(n + staged)"
+      }
+    },
+    {
+      "id": "nested-transactions",
+      "title": "Nested transactions",
+      "requirement": "Last one. Our ORM issues **nested** transactions. `begin()` can now be called while a\ntransaction is open:\n\n- Reads see the combined effect of every open level, innermost changes winning.\n- `rollback()` discards only the **innermost** transaction's changes.\n- `commit()` merges the innermost transaction into its parent. Changes only reach the\n  store when the **outermost** transaction commits.\n- `commit()` or `rollback()` with no open transaction still raises `RuntimeError`.\n\n```python\nkv.set(\"a\", \"1\")\nkv.begin(); kv.set(\"a\", \"2\")\nkv.begin(); kv.set(\"a\", \"3\")\nkv.rollback()       # inner discarded\nkv.get(\"a\")         # -> \"2\"\nkv.commit()         # outer applied\nkv.get(\"a\")         # -> \"2\"\n```",
+      "visibleTests": [
+        {
+          "name": "test_inner_rollback_keeps_outer",
+          "code": "def test_inner_rollback_keeps_outer():\n    kv = KVStore()\n    kv.set(\"a\", \"1\")\n    kv.begin()\n    kv.set(\"a\", \"2\")\n    kv.begin()\n    kv.set(\"a\", \"3\")\n    assert kv.get(\"a\") == \"3\"\n    kv.rollback()\n    assert kv.get(\"a\") == \"2\"\n    kv.commit()\n    assert kv.get(\"a\") == \"2\"\n"
+        },
+        {
+          "name": "test_inner_commit_then_outer_rollback",
+          "code": "def test_inner_commit_then_outer_rollback():\n    kv = KVStore()\n    kv.begin()\n    kv.begin()\n    kv.set(\"x\", \"1\")\n    kv.commit()\n    assert kv.get(\"x\") == \"1\"\n    kv.rollback()\n    assert kv.get(\"x\") is None\n"
+        }
+      ],
+      "hiddenTests": [
+        {
+          "name": "test_three_levels",
+          "code": "def test_three_levels():\n    kv = KVStore()\n    kv.begin()\n    kv.set(\"a\", \"1\")\n    kv.begin()\n    kv.delete(\"a\")\n    kv.begin()\n    kv.set(\"b\", \"2\")\n    assert kv.keys() == [\"b\"]\n    kv.commit()\n    kv.commit()\n    kv.commit()\n    assert kv.get(\"a\") is None\n    assert kv.get(\"b\") == \"2\"\n"
+        },
+        {
+          "name": "test_inner_delete_hides_outer_write",
+          "code": "def test_inner_delete_hides_outer_write():\n    kv = KVStore()\n    kv.begin()\n    kv.set(\"a\", \"1\")\n    kv.begin()\n    assert kv.delete(\"a\") is True\n    assert kv.get(\"a\") is None\n    kv.rollback()\n    assert kv.get(\"a\") == \"1\"\n    kv.commit()\n    assert kv.get(\"a\") == \"1\"\n"
+        },
+        {
+          "name": "test_unbalanced_commit_raises_after_nesting",
+          "code": "def test_unbalanced_commit_raises_after_nesting():\n    kv = KVStore()\n    kv.begin()\n    kv.begin()\n    kv.commit()\n    kv.commit()\n    try:\n        kv.commit()\n    except RuntimeError:\n        return\n    raise AssertionError(\"expected RuntimeError\")\n"
+        },
+        {
+          "name": "test_many_nested_levels",
+          "code": "def test_many_nested_levels():\n    kv = KVStore()\n    for i in range(500):\n        kv.begin()\n        kv.set(f\"k{i}\", str(i))\n    for _ in range(250):\n        kv.rollback()\n    for _ in range(250):\n        kv.commit()\n    assert kv.keys() == sorted(f\"k{i}\" for i in range(250))\n"
+        }
+      ],
+      "hints": [
+        "If one staging dict was one transaction, what represents several nested ones?",
+        "Keep a stack of staging layers. `begin` pushes, `rollback` pops, reads search the stack top-down, then the store.",
+        "`commit` pops the top layer and replays its entries (including tombstones) into the layer below, or into the store when it was the last one."
+      ],
+      "solution": {
+        "code": "_DELETED = object()\n\n\nclass KVStore:\n    def __init__(self):\n        # key -> (value, expires_at or None)\n        self._base: dict[str, tuple[str, int | None]] = {}\n        # Open transactions, innermost last: key -> entry or _DELETED\n        self._layers: list[dict[str, object]] = []\n\n    @staticmethod\n    def _expired(entry, now: int) -> bool:\n        return entry[1] is not None and now >= entry[1]\n\n    def _lookup(self, key: str):\n        for layer in reversed(self._layers):\n            if key in layer:\n                entry = layer[key]\n                return None if entry is _DELETED else entry\n        return self._base.get(key)\n\n    def _write(self, key: str, entry) -> None:\n        if self._layers:\n            self._layers[-1][key] = entry\n        elif entry is _DELETED:\n            self._base.pop(key, None)\n        else:\n            self._base[key] = entry\n\n    def set(self, key: str, value: str, ttl: int | None = None, now: int = 0) -> None:\n        self._write(key, (value, None if ttl is None else now + ttl))\n\n    def get(self, key: str, now: int = 0) -> str | None:\n        entry = self._lookup(key)\n        if entry is None or self._expired(entry, now):\n            return None\n        return entry[0]\n\n    def delete(self, key: str, now: int = 0) -> bool:\n        if self.get(key, now) is None:\n            return False\n        self._write(key, _DELETED)\n        return True\n\n    def keys(self, prefix: str = \"\", now: int = 0) -> list[str]:\n        candidates = set(self._base)\n        for layer in self._layers:\n            candidates.update(layer)\n        return sorted(k for k in candidates if k.startswith(prefix) and self.get(k, now) is not None)\n\n    def begin(self) -> None:\n        self._layers.append({})\n\n    def _pop(self) -> dict[str, object]:\n        if not self._layers:\n            raise RuntimeError(\"no transaction in progress\")\n        return self._layers.pop()\n\n    def rollback(self) -> None:\n        self._pop()\n\n    def commit(self) -> None:\n        for key, entry in self._pop().items():\n            self._write(key, entry)\n",
+        "explanation": "Generalising the single staging layer to a **stack** handles any depth. Writes go to the\ntop layer, and reads search from the top down to the base. `commit` replays the popped\nlayer into the next one down (tombstones included), so changes only reach `_base`\nwhen the outermost level commits. If stage 3 was built around a single staging dict, turning it into a list of layers\nneeds only small changes, which is why designing for the stack pays off.",
+        "timeComplexity": "O(depth) reads; O(staged) commit",
+        "spaceComplexity": "O(n + total staged)"
+      }
+    }
+  ]
+}

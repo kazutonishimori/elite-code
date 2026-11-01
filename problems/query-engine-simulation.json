@@ -1,0 +1,238 @@
+{
+  "schemaVersion": 1,
+  "id": "query-engine-simulation",
+  "title": "Mini Query Engine",
+  "type": "simulation",
+  "difficulty": "hard",
+  "tags": [
+    "design",
+    "data-processing",
+    "aggregation",
+    "joins"
+  ],
+  "summary": "Build a tiny SQL-like query engine over lists of rows, adding features the way a real one grows.",
+  "starterCode": "class Query:\n    def __init__(self, rows: list[dict]):\n        pass\n\n    def select(self, *columns: str) -> \"Query\":\n        pass\n\n    def where(self, column: str, op: str, value) -> \"Query\":\n        pass\n\n    def run(self) -> list[dict]:\n        pass\n",
+  "estimatedMinutes": 75,
+  "companies": [
+    "Databricks",
+    "Snowflake",
+    "ClickHouse"
+  ],
+  "topics": [
+    "databases",
+    "sql"
+  ],
+  "stages": [
+    {
+      "id": "select-where",
+      "title": "SELECT and WHERE",
+      "requirement": "We're building a mini query engine over rows (lists of dicts). Implement an\n**immutable**, chainable `Query(rows)`:\n\n- `select(*columns)`: output only these columns, in this order. A column a row doesn't\n  have comes out as `None`. With no `select` (or `select()` with no arguments), output\n  all of each row's columns.\n- `where(column, op, value)` with `op` in `=`, `!=`, `<`, `<=`, `>`, `>=`. Several `where`\n  calls combine with **AND**. As in SQL, a row whose column is missing or `None` never\n  matches. An unknown `op` raises `ValueError` immediately.\n- `run()` returns new dicts in input order and never mutates the input rows.\n- Every builder method returns a **new** `Query`, leaving the original unchanged.\n\nExamples in this interview use this table:\n\n```python\npeople = [\n    {\"id\": 1, \"name\": \"ada\", \"team\": \"core\", \"age\": 36},\n    {\"id\": 2, \"name\": \"bob\", \"team\": \"web\", \"age\": 28},\n    {\"id\": 3, \"name\": \"cy\", \"team\": \"core\", \"age\": 41},\n    {\"id\": 4, \"name\": \"di\", \"team\": None, \"age\": 23},\n]\nq = Query(people)\nq.where(\"age\", \">\", 30).select(\"name\").run()   # -> [{\"name\": \"ada\"}, {\"name\": \"cy\"}]\nq.run()                                          # all rows, unfiltered\n```",
+      "visibleTests": [
+        {
+          "name": "test_select_where",
+          "code": "def test_select_where():\n    PEOPLE = [\n        {\"id\": 1, \"name\": \"ada\", \"team\": \"core\", \"age\": 36},\n        {\"id\": 2, \"name\": \"bob\", \"team\": \"web\", \"age\": 28},\n        {\"id\": 3, \"name\": \"cy\", \"team\": \"core\", \"age\": 41},\n        {\"id\": 4, \"name\": \"di\", \"team\": None, \"age\": 23},\n    ]\n    out = Query(PEOPLE).where(\"age\", \">\", 30).select(\"name\").run()\n    assert out == [{\"name\": \"ada\"}, {\"name\": \"cy\"}]\n"
+        },
+        {
+          "name": "test_no_select_returns_all_columns",
+          "code": "def test_no_select_returns_all_columns():\n    PEOPLE = [\n        {\"id\": 1, \"name\": \"ada\", \"team\": \"core\", \"age\": 36},\n        {\"id\": 2, \"name\": \"bob\", \"team\": \"web\", \"age\": 28},\n        {\"id\": 3, \"name\": \"cy\", \"team\": \"core\", \"age\": 41},\n        {\"id\": 4, \"name\": \"di\", \"team\": None, \"age\": 23},\n    ]\n    assert Query(PEOPLE).where(\"name\", \"=\", \"bob\").run() == [PEOPLE[1]]\n"
+        }
+      ],
+      "hiddenTests": [
+        {
+          "name": "test_and_semantics",
+          "code": "def test_and_semantics():\n    PEOPLE = [\n        {\"id\": 1, \"name\": \"ada\", \"team\": \"core\", \"age\": 36},\n        {\"id\": 2, \"name\": \"bob\", \"team\": \"web\", \"age\": 28},\n        {\"id\": 3, \"name\": \"cy\", \"team\": \"core\", \"age\": 41},\n        {\"id\": 4, \"name\": \"di\", \"team\": None, \"age\": 23},\n    ]\n    out = Query(PEOPLE).where(\"team\", \"=\", \"core\").where(\"age\", \"<\", 40).select(\"id\").run()\n    assert out == [{\"id\": 1}]\n"
+        },
+        {
+          "name": "test_null_never_matches",
+          "description": "SQL semantics: NULL != 'core' is not true.",
+          "code": "def test_null_never_matches():\n    PEOPLE = [\n        {\"id\": 1, \"name\": \"ada\", \"team\": \"core\", \"age\": 36},\n        {\"id\": 2, \"name\": \"bob\", \"team\": \"web\", \"age\": 28},\n        {\"id\": 3, \"name\": \"cy\", \"team\": \"core\", \"age\": 41},\n        {\"id\": 4, \"name\": \"di\", \"team\": None, \"age\": 23},\n    ]\n    assert Query(PEOPLE).where(\"team\", \"!=\", \"core\").select(\"name\").run() == [{\"name\": \"bob\"}]\n"
+        },
+        {
+          "name": "test_missing_selected_column",
+          "code": "def test_missing_selected_column():\n    PEOPLE = [\n        {\"id\": 1, \"name\": \"ada\", \"team\": \"core\", \"age\": 36},\n        {\"id\": 2, \"name\": \"bob\", \"team\": \"web\", \"age\": 28},\n        {\"id\": 3, \"name\": \"cy\", \"team\": \"core\", \"age\": 41},\n        {\"id\": 4, \"name\": \"di\", \"team\": None, \"age\": 23},\n    ]\n    assert Query(PEOPLE[:1]).select(\"name\", \"salary\").run() == [{\"name\": \"ada\", \"salary\": None}]\n"
+        },
+        {
+          "name": "test_queries_are_immutable",
+          "code": "def test_queries_are_immutable():\n    PEOPLE = [\n        {\"id\": 1, \"name\": \"ada\", \"team\": \"core\", \"age\": 36},\n        {\"id\": 2, \"name\": \"bob\", \"team\": \"web\", \"age\": 28},\n        {\"id\": 3, \"name\": \"cy\", \"team\": \"core\", \"age\": 41},\n        {\"id\": 4, \"name\": \"di\", \"team\": None, \"age\": 23},\n    ]\n    base = Query(PEOPLE)\n    filtered = base.where(\"age\", \">\", 100)\n    assert filtered.run() == []\n    assert len(base.run()) == 4\n"
+        },
+        {
+          "name": "test_output_rows_are_copies",
+          "code": "def test_output_rows_are_copies():\n    PEOPLE = [\n        {\"id\": 1, \"name\": \"ada\", \"team\": \"core\", \"age\": 36},\n        {\"id\": 2, \"name\": \"bob\", \"team\": \"web\", \"age\": 28},\n        {\"id\": 3, \"name\": \"cy\", \"team\": \"core\", \"age\": 41},\n        {\"id\": 4, \"name\": \"di\", \"team\": None, \"age\": 23},\n    ]\n    rows = [dict(r) for r in PEOPLE]\n    out = Query(rows).run()\n    out[0][\"name\"] = \"changed\"\n    assert rows[0][\"name\"] == \"ada\"\n"
+        },
+        {
+          "name": "test_unknown_operator",
+          "code": "def test_unknown_operator():\n    try:\n        Query([]).where(\"a\", \"LIKE\", \"x\")\n    except ValueError:\n        return\n    raise AssertionError(\"expected ValueError\")\n"
+        }
+      ],
+      "hints": [
+        "Make each builder method return a new `Query` with the extra piece of state, and do all the work in `run()`.",
+        "Map operator strings to functions from the `operator` module. Store filters as `(column, fn, value)` tuples.",
+        "In `run`, keep a row if every filter passes: the value must be present, not `None`, and `fn(value, target)` must be true."
+      ],
+      "solution": {
+        "code": "import operator\n\nOPS = {\n    \"=\": operator.eq,\n    \"!=\": operator.ne,\n    \"<\": operator.lt,\n    \"<=\": operator.le,\n    \">\": operator.gt,\n    \">=\": operator.ge,\n}\n\n\nclass Query:\n    def __init__(self, rows: list[dict], _columns=None, _filters=()):\n        self._rows = rows\n        self._columns = _columns\n        self._filters = tuple(_filters)\n\n    def _copy(self, **changes) -> \"Query\":\n        state = {\"_columns\": self._columns, \"_filters\": self._filters}\n        state.update(changes)\n        return Query(self._rows, **state)\n\n    def select(self, *columns: str) -> \"Query\":\n        return self._copy(_columns=columns or None)\n\n    def where(self, column: str, op: str, value) -> \"Query\":\n        if op not in OPS:\n            raise ValueError(f\"unsupported operator {op!r}\")\n        return self._copy(_filters=(*self._filters, (column, OPS[op], value)))\n\n    def run(self) -> list[dict]:\n        out = []\n        for row in self._rows:\n            if all(row.get(c) is not None and fn(row[c], v) for c, fn, v in self._filters):\n                if self._columns is None:\n                    out.append(dict(row))\n                else:\n                    out.append({c: row.get(c) for c in self._columns})\n        return out\n",
+        "explanation": "Builders only record intent, and `run()` executes. That makes immutability trivial\n(each call copies the small state) and leaves room for later stages to add pipeline\nsteps. Operators map to `operator` functions, validated eagerly so mistakes surface at\nbuild time. The `None` check gives SQL's three-valued NULL behavior.",
+        "timeComplexity": "O(n * f) per run for f filters",
+        "spaceComplexity": "O(n)"
+      }
+    },
+    {
+      "id": "order-limit",
+      "title": "ORDER BY and LIMIT",
+      "requirement": "Nice. Add sorting and paging:\n\n- `order_by(column, descending=False)`. Several calls form a multi-column sort, with the\n  **first call as the primary key**. Rows whose sort column is missing or `None` always\n  go **last**, in both directions. Ties keep input order.\n- `limit(n, offset=0)` keeps `n` rows after skipping `offset`.\n\nAs in SQL, the order of the builder calls doesn't change the meaning. Execution is\nalways: filter, then sort, then offset/limit, then project (`select`). You can sort by a\ncolumn you don't select.\n\n```python\nQuery(people).order_by(\"team\").order_by(\"age\", descending=True).select(\"name\").run()\n# -> [{\"name\": \"cy\"}, {\"name\": \"ada\"}, {\"name\": \"bob\"}, {\"name\": \"di\"}]\n```",
+      "visibleTests": [
+        {
+          "name": "test_multi_column_sort",
+          "code": "def test_multi_column_sort():\n    PEOPLE = [\n        {\"id\": 1, \"name\": \"ada\", \"team\": \"core\", \"age\": 36},\n        {\"id\": 2, \"name\": \"bob\", \"team\": \"web\", \"age\": 28},\n        {\"id\": 3, \"name\": \"cy\", \"team\": \"core\", \"age\": 41},\n        {\"id\": 4, \"name\": \"di\", \"team\": None, \"age\": 23},\n    ]\n    out = Query(PEOPLE).order_by(\"team\").order_by(\"age\", descending=True).select(\"name\").run()\n    assert [r[\"name\"] for r in out] == [\"cy\", \"ada\", \"bob\", \"di\"]\n"
+        },
+        {
+          "name": "test_limit_offset",
+          "code": "def test_limit_offset():\n    PEOPLE = [\n        {\"id\": 1, \"name\": \"ada\", \"team\": \"core\", \"age\": 36},\n        {\"id\": 2, \"name\": \"bob\", \"team\": \"web\", \"age\": 28},\n        {\"id\": 3, \"name\": \"cy\", \"team\": \"core\", \"age\": 41},\n        {\"id\": 4, \"name\": \"di\", \"team\": None, \"age\": 23},\n    ]\n    out = Query(PEOPLE).order_by(\"age\").limit(2, offset=1).select(\"name\").run()\n    assert out == [{\"name\": \"bob\"}, {\"name\": \"ada\"}]\n"
+        }
+      ],
+      "hiddenTests": [
+        {
+          "name": "test_nulls_last_when_descending",
+          "code": "def test_nulls_last_when_descending():\n    PEOPLE = [\n        {\"id\": 1, \"name\": \"ada\", \"team\": \"core\", \"age\": 36},\n        {\"id\": 2, \"name\": \"bob\", \"team\": \"web\", \"age\": 28},\n        {\"id\": 3, \"name\": \"cy\", \"team\": \"core\", \"age\": 41},\n        {\"id\": 4, \"name\": \"di\", \"team\": None, \"age\": 23},\n    ]\n    out = Query(PEOPLE).order_by(\"team\", descending=True).select(\"name\").run()\n    assert [r[\"name\"] for r in out] == [\"bob\", \"ada\", \"cy\", \"di\"]\n"
+        },
+        {
+          "name": "test_select_before_order_by",
+          "description": "Calling select() first must not stop sorting by an unselected column.",
+          "code": "def test_select_before_order_by():\n    PEOPLE = [\n        {\"id\": 1, \"name\": \"ada\", \"team\": \"core\", \"age\": 36},\n        {\"id\": 2, \"name\": \"bob\", \"team\": \"web\", \"age\": 28},\n        {\"id\": 3, \"name\": \"cy\", \"team\": \"core\", \"age\": 41},\n        {\"id\": 4, \"name\": \"di\", \"team\": None, \"age\": 23},\n    ]\n    out = Query(PEOPLE).select(\"name\").order_by(\"age\").limit(1).run()\n    assert out == [{\"name\": \"di\"}]\n"
+        },
+        {
+          "name": "test_limit_beyond_end",
+          "code": "def test_limit_beyond_end():\n    PEOPLE = [\n        {\"id\": 1, \"name\": \"ada\", \"team\": \"core\", \"age\": 36},\n        {\"id\": 2, \"name\": \"bob\", \"team\": \"web\", \"age\": 28},\n        {\"id\": 3, \"name\": \"cy\", \"team\": \"core\", \"age\": 41},\n        {\"id\": 4, \"name\": \"di\", \"team\": None, \"age\": 23},\n    ]\n    assert Query(PEOPLE).limit(10, offset=3).select(\"id\").run() == [{\"id\": 4}]\n    assert Query(PEOPLE).limit(0).run() == []\n"
+        },
+        {
+          "name": "test_stable_ties",
+          "code": "def test_stable_ties():\n    rows = [{\"k\": 1, \"i\": i} for i in range(5)]\n    assert [r[\"i\"] for r in Query(rows).order_by(\"k\", descending=True).run()] == [0, 1, 2, 3, 4]\n"
+        },
+        {
+          "name": "test_large_sort",
+          "code": "def test_large_sort():\n    rows = [{\"v\": (i * 7919) % 10_007, \"i\": i} for i in range(50_000)]\n    out = Query(rows).order_by(\"v\").order_by(\"i\", descending=True).limit(3).run()\n    assert [r[\"v\"] for r in out] == [0, 0, 0]\n    assert out[0][\"i\"] > out[1][\"i\"] > out[2][\"i\"]\n"
+        }
+      ],
+      "hints": [
+        "Record order and limit as state, like the filters. Then fix the execution order inside `run()`.",
+        "Multi-key sorting with mixed directions is easy with stable sorts: sort by the *least* significant key first, then the next, and so on.",
+        "Handle `None` by splitting rows into present and missing for each key, sorting the present ones, and appending the missing ones."
+      ],
+      "solution": {
+        "code": "import operator\n\nOPS = {\n    \"=\": operator.eq,\n    \"!=\": operator.ne,\n    \"<\": operator.lt,\n    \"<=\": operator.le,\n    \">\": operator.gt,\n    \">=\": operator.ge,\n}\n\n\ndef _sorted(rows: list[dict], keys) -> list[dict]:\n    # Apply the least significant key first; Python's sort is stable.\n    for column, descending in reversed(keys):\n        present = [r for r in rows if r.get(column) is not None]\n        missing = [r for r in rows if r.get(column) is None]\n        present.sort(key=lambda r: r[column], reverse=descending)\n        rows = present + missing\n    return rows\n\n\nclass Query:\n    def __init__(self, rows: list[dict], **state):\n        self._rows = rows\n        self._state = {\"columns\": None, \"filters\": (), \"order\": (), \"limit\": None, \"offset\": 0}\n        self._state.update(state)\n\n    def _copy(self, **changes) -> \"Query\":\n        return Query(self._rows, **{**self._state, **changes})\n\n    def select(self, *columns: str) -> \"Query\":\n        return self._copy(columns=columns or None)\n\n    def where(self, column: str, op: str, value) -> \"Query\":\n        if op not in OPS:\n            raise ValueError(f\"unsupported operator {op!r}\")\n        return self._copy(filters=(*self._state[\"filters\"], (column, OPS[op], value)))\n\n    def order_by(self, column: str, descending: bool = False) -> \"Query\":\n        return self._copy(order=(*self._state[\"order\"], (column, descending)))\n\n    def limit(self, n: int, offset: int = 0) -> \"Query\":\n        return self._copy(limit=n, offset=offset)\n\n    def run(self) -> list[dict]:\n        s = self._state\n        rows = [\n            r for r in self._rows\n            if all(r.get(c) is not None and fn(r[c], v) for c, fn, v in s[\"filters\"])\n        ]\n        rows = _sorted(rows, s[\"order\"])\n        end = None if s[\"limit\"] is None else s[\"offset\"] + s[\"limit\"]\n        rows = rows[s[\"offset\"]:end]\n        if s[\"columns\"] is None:\n            return [dict(r) for r in rows]\n        return [{c: r.get(c) for c in s[\"columns\"]} for r in rows]\n",
+        "explanation": "State grows to include sort keys and paging, and `run()` fixes the SQL execution\norder (filter, sort, slice, project) whatever order the builders were called in.\nMixed-direction multi-key sorts use repeated stable sorts from the least significant\nkey, keeping `None`s at the end of each pass, so they end up last overall.",
+        "timeComplexity": "O(k * n log n) for k sort keys",
+        "spaceComplexity": "O(n)"
+      }
+    },
+    {
+      "id": "group-aggregate",
+      "title": "GROUP BY and aggregates",
+      "requirement": "The analytics team needs aggregates:\n\n- `group_by(*columns)` groups rows by those columns' values (`None` is a valid group value).\n- `aggregate(**aliases)`, where each alias maps to `(func, column)` with `func` in `count`,\n  `sum`, `avg`, `min`, `max`. `(\"count\", None)` counts rows. Every other aggregate ignores\n  `None`/missing values and returns `None` if nothing is left. `avg` is rounded to 2\n  decimals. An unknown func raises `ValueError` immediately.\n- Output rows contain the group columns, then the aliases in call order. Groups appear\n  in order of first appearance unless sorted.\n- `aggregate` **without** `group_by` produces exactly one row over all filtered rows,\n  even when there are zero rows (counts are 0, others `None`). `group_by` without\n  aggregates yields the distinct groups.\n- Execution order: filter, then group/aggregate, then sort, then limit, then project.\n  `order_by` and `select` can use aliases.\n\n```python\nQuery(people).group_by(\"team\").aggregate(n=(\"count\", None), oldest=(\"max\", \"age\")).run()\n# -> [{\"team\": \"core\", \"n\": 2, \"oldest\": 41}, {\"team\": \"web\", \"n\": 1, \"oldest\": 28},\n#     {\"team\": None, \"n\": 1, \"oldest\": 23}]\n```",
+      "visibleTests": [
+        {
+          "name": "test_group_count_max",
+          "code": "def test_group_count_max():\n    PEOPLE = [\n        {\"id\": 1, \"name\": \"ada\", \"team\": \"core\", \"age\": 36},\n        {\"id\": 2, \"name\": \"bob\", \"team\": \"web\", \"age\": 28},\n        {\"id\": 3, \"name\": \"cy\", \"team\": \"core\", \"age\": 41},\n        {\"id\": 4, \"name\": \"di\", \"team\": None, \"age\": 23},\n    ]\n    out = Query(PEOPLE).group_by(\"team\").aggregate(n=(\"count\", None), oldest=(\"max\", \"age\")).run()\n    assert out == [\n        {\"team\": \"core\", \"n\": 2, \"oldest\": 41},\n        {\"team\": \"web\", \"n\": 1, \"oldest\": 28},\n        {\"team\": None, \"n\": 1, \"oldest\": 23},\n    ]\n"
+        },
+        {
+          "name": "test_global_aggregate",
+          "code": "def test_global_aggregate():\n    PEOPLE = [\n        {\"id\": 1, \"name\": \"ada\", \"team\": \"core\", \"age\": 36},\n        {\"id\": 2, \"name\": \"bob\", \"team\": \"web\", \"age\": 28},\n        {\"id\": 3, \"name\": \"cy\", \"team\": \"core\", \"age\": 41},\n        {\"id\": 4, \"name\": \"di\", \"team\": None, \"age\": 23},\n    ]\n    out = Query(PEOPLE).aggregate(avg_age=(\"avg\", \"age\"), total=(\"sum\", \"age\")).run()\n    assert out == [{\"avg_age\": 32.0, \"total\": 128}]\n"
+        }
+      ],
+      "hiddenTests": [
+        {
+          "name": "test_order_by_alias_and_limit",
+          "code": "def test_order_by_alias_and_limit():\n    PEOPLE = [\n        {\"id\": 1, \"name\": \"ada\", \"team\": \"core\", \"age\": 36},\n        {\"id\": 2, \"name\": \"bob\", \"team\": \"web\", \"age\": 28},\n        {\"id\": 3, \"name\": \"cy\", \"team\": \"core\", \"age\": 41},\n        {\"id\": 4, \"name\": \"di\", \"team\": None, \"age\": 23},\n    ]\n    out = (\n        Query(PEOPLE).group_by(\"team\").aggregate(n=(\"count\", None))\n        .order_by(\"n\", descending=True).limit(1).select(\"team\").run()\n    )\n    assert out == [{\"team\": \"core\"}]\n"
+        },
+        {
+          "name": "test_where_applies_before_grouping",
+          "code": "def test_where_applies_before_grouping():\n    PEOPLE = [\n        {\"id\": 1, \"name\": \"ada\", \"team\": \"core\", \"age\": 36},\n        {\"id\": 2, \"name\": \"bob\", \"team\": \"web\", \"age\": 28},\n        {\"id\": 3, \"name\": \"cy\", \"team\": \"core\", \"age\": 41},\n        {\"id\": 4, \"name\": \"di\", \"team\": None, \"age\": 23},\n    ]\n    out = Query(PEOPLE).where(\"age\", \">\", 30).group_by(\"team\").aggregate(n=(\"count\", None)).run()\n    assert out == [{\"team\": \"core\", \"n\": 2}]\n"
+        },
+        {
+          "name": "test_aggregate_over_no_rows",
+          "code": "def test_aggregate_over_no_rows():\n    out = Query([]).aggregate(n=(\"count\", None), s=(\"sum\", \"x\"), m=(\"min\", \"x\")).run()\n    assert out == [{\"n\": 0, \"s\": None, \"m\": None}]\n"
+        },
+        {
+          "name": "test_count_column_ignores_nulls",
+          "code": "def test_count_column_ignores_nulls():\n    rows = [{\"g\": 1, \"x\": None}, {\"g\": 1, \"x\": 5}, {\"g\": 1}]\n    out = Query(rows).group_by(\"g\").aggregate(rows_=(\"count\", None), xs=(\"count\", \"x\"), avg_x=(\"avg\", \"x\")).run()\n    assert out == [{\"g\": 1, \"rows_\": 3, \"xs\": 1, \"avg_x\": 5.0}]\n"
+        },
+        {
+          "name": "test_group_by_without_aggregates_is_distinct",
+          "code": "def test_group_by_without_aggregates_is_distinct():\n    PEOPLE = [\n        {\"id\": 1, \"name\": \"ada\", \"team\": \"core\", \"age\": 36},\n        {\"id\": 2, \"name\": \"bob\", \"team\": \"web\", \"age\": 28},\n        {\"id\": 3, \"name\": \"cy\", \"team\": \"core\", \"age\": 41},\n        {\"id\": 4, \"name\": \"di\", \"team\": None, \"age\": 23},\n    ]\n    assert Query(PEOPLE).group_by(\"team\").run() == [{\"team\": \"core\"}, {\"team\": \"web\"}, {\"team\": None}]\n"
+        },
+        {
+          "name": "test_multi_column_groups_and_rounding",
+          "code": "def test_multi_column_groups_and_rounding():\n    rows = [{\"a\": 1, \"b\": \"x\", \"v\": 1}, {\"a\": 1, \"b\": \"x\", \"v\": 2}, {\"a\": 1, \"b\": \"y\", \"v\": 2}, {\"a\": 1, \"b\": \"x\", \"v\": 2}]\n    out = Query(rows).group_by(\"a\", \"b\").aggregate(m=(\"avg\", \"v\")).run()\n    assert out == [{\"a\": 1, \"b\": \"x\", \"m\": 1.67}, {\"a\": 1, \"b\": \"y\", \"m\": 2.0}]\n"
+        },
+        {
+          "name": "test_unknown_aggregate",
+          "code": "def test_unknown_aggregate():\n    try:\n        Query([]).aggregate(x=(\"median\", \"v\"))\n    except ValueError:\n        return\n    raise AssertionError(\"expected ValueError\")\n"
+        }
+      ],
+      "hints": [
+        "Grouping slots in between filtering and sorting, and produces new rows that the later steps operate on.",
+        "Group with a dict keyed by a tuple of the group column values. A dict keeps first-appearance order. Then compute each alias over the group's rows.",
+        "Watch the edge case: aggregate without group_by over zero rows must still return one row."
+      ],
+      "solution": {
+        "code": "import operator\n\nOPS = {\n    \"=\": operator.eq,\n    \"!=\": operator.ne,\n    \"<\": operator.lt,\n    \"<=\": operator.le,\n    \">\": operator.gt,\n    \">=\": operator.ge,\n}\n\n\ndef _sorted(rows: list[dict], keys) -> list[dict]:\n    # Apply the least significant key first; Python's sort is stable.\n    for column, descending in reversed(keys):\n        present = [r for r in rows if r.get(column) is not None]\n        missing = [r for r in rows if r.get(column) is None]\n        present.sort(key=lambda r: r[column], reverse=descending)\n        rows = present + missing\n    return rows\n\n\nAGGREGATES = (\"count\", \"sum\", \"avg\", \"min\", \"max\")\n\n\ndef _aggregate(func: str, column, rows: list[dict]):\n    if func == \"count\":\n        return len(rows) if column is None else sum(1 for r in rows if r.get(column) is not None)\n    values = [r[column] for r in rows if r.get(column) is not None]\n    if not values:\n        return None\n    if func == \"sum\":\n        return sum(values)\n    if func == \"avg\":\n        return round(sum(values) / len(values), 2)\n    return min(values) if func == \"min\" else max(values)\n\n\ndef _group(rows: list[dict], keys: tuple, aggregates: dict) -> list[dict]:\n    groups: dict[tuple, list[dict]] = {}\n    for r in rows:\n        groups.setdefault(tuple(r.get(k) for k in keys), []).append(r)\n    if not keys and not groups:\n        groups[()] = []  # an aggregate over zero rows still yields one row\n    out = []\n    for key, members in groups.items():\n        row = dict(zip(keys, key))\n        for alias, (func, column) in aggregates.items():\n            row[alias] = _aggregate(func, column, members)\n        out.append(row)\n    return out\n\n\nclass Query:\n    def __init__(self, rows: list[dict], **state):\n        self._rows = rows\n        self._state = {\n            \"columns\": None, \"filters\": (), \"order\": (), \"limit\": None, \"offset\": 0,\n            \"group\": None, \"aggregates\": {},\n        }\n        self._state.update(state)\n\n    def _copy(self, **changes) -> \"Query\":\n        return Query(self._rows, **{**self._state, **changes})\n\n    def select(self, *columns: str) -> \"Query\":\n        return self._copy(columns=columns or None)\n\n    def where(self, column: str, op: str, value) -> \"Query\":\n        if op not in OPS:\n            raise ValueError(f\"unsupported operator {op!r}\")\n        return self._copy(filters=(*self._state[\"filters\"], (column, OPS[op], value)))\n\n    def order_by(self, column: str, descending: bool = False) -> \"Query\":\n        return self._copy(order=(*self._state[\"order\"], (column, descending)))\n\n    def limit(self, n: int, offset: int = 0) -> \"Query\":\n        return self._copy(limit=n, offset=offset)\n\n    def group_by(self, *columns: str) -> \"Query\":\n        return self._copy(group=columns)\n\n    def aggregate(self, **aliases: tuple) -> \"Query\":\n        for alias, (func, _column) in aliases.items():\n            if func not in AGGREGATES:\n                raise ValueError(f\"unsupported aggregate {func!r} for {alias!r}\")\n        return self._copy(aggregates={**self._state[\"aggregates\"], **aliases})\n\n    def run(self) -> list[dict]:\n        s = self._state\n        rows = [\n            r for r in self._rows\n            if all(r.get(c) is not None and fn(r[c], v) for c, fn, v in s[\"filters\"])\n        ]\n        if s[\"group\"] is not None or s[\"aggregates\"]:\n            rows = _group(rows, s[\"group\"] or (), s[\"aggregates\"])\n        rows = _sorted(rows, s[\"order\"])\n        end = None if s[\"limit\"] is None else s[\"offset\"] + s[\"limit\"]\n        rows = rows[s[\"offset\"]:end]\n        if s[\"columns\"] is None:\n            return [dict(r) for r in rows]\n        return [{c: r.get(c) for c in s[\"columns\"]} for r in rows]\n",
+        "explanation": "Grouping becomes a pipeline stage between filtering and sorting. It replaces the row\nset with one row per group (group columns plus aliases), so sorting, limiting and\nprojection work on aliases automatically. A dict keyed by tuples groups in one pass\nand keeps first-appearance order. The zero-row global aggregate is special-cased, as\nin SQL.",
+        "timeComplexity": "O(n * a) for a aggregates, plus sorting",
+        "spaceComplexity": "O(n)"
+      }
+    },
+    {
+      "id": "joins",
+      "title": "JOINs",
+      "requirement": "Last one: joins. Add `join(rows, left_on, right_on, how=\"inner\")`:\n\n- `how=\"inner\"` keeps only matching pairs. `how=\"left\"` also keeps unmatched left rows,\n  with every right column set to `None`. Anything else raises `ValueError`.\n- A pair matches when `left[left_on] == right[right_on]` and the value isn't `None`. One\n  left row can match many right rows: emit them in right order, grouped under each left\n  row, which stays in left order.\n- Merged rows start from the left row. Right columns are added, except that the\n  right key is omitted when `left_on == right_on`. If a right column name already exists\n  in the left row, it's stored as `\"<name>_right\"`.\n- Joins run **first**, in call order, before filtering, grouping, sorting, limits and\n  projection, so `where`, `group_by` and so on can use joined columns.\n\n```python\nteams = [{\"team\": \"core\", \"lead\": \"ada\"}, {\"team\": \"web\", \"lead\": \"bob\"}]\nQuery(people).join(teams, \"team\", \"team\").select(\"name\", \"lead\").run()\n# -> [{\"name\": \"ada\", \"lead\": \"ada\"}, {\"name\": \"bob\", \"lead\": \"bob\"}, {\"name\": \"cy\", \"lead\": \"ada\"}]\n```",
+      "visibleTests": [
+        {
+          "name": "test_inner_join",
+          "code": "def test_inner_join():\n    PEOPLE = [\n        {\"id\": 1, \"name\": \"ada\", \"team\": \"core\", \"age\": 36},\n        {\"id\": 2, \"name\": \"bob\", \"team\": \"web\", \"age\": 28},\n        {\"id\": 3, \"name\": \"cy\", \"team\": \"core\", \"age\": 41},\n        {\"id\": 4, \"name\": \"di\", \"team\": None, \"age\": 23},\n    ]\n    teams = [{\"team\": \"core\", \"lead\": \"ada\"}, {\"team\": \"web\", \"lead\": \"bob\"}]\n    out = Query(PEOPLE).join(teams, \"team\", \"team\").select(\"name\", \"lead\").run()\n    assert out == [{\"name\": \"ada\", \"lead\": \"ada\"}, {\"name\": \"bob\", \"lead\": \"bob\"}, {\"name\": \"cy\", \"lead\": \"ada\"}]\n"
+        },
+        {
+          "name": "test_left_join_keeps_unmatched",
+          "code": "def test_left_join_keeps_unmatched():\n    PEOPLE = [\n        {\"id\": 1, \"name\": \"ada\", \"team\": \"core\", \"age\": 36},\n        {\"id\": 2, \"name\": \"bob\", \"team\": \"web\", \"age\": 28},\n        {\"id\": 3, \"name\": \"cy\", \"team\": \"core\", \"age\": 41},\n        {\"id\": 4, \"name\": \"di\", \"team\": None, \"age\": 23},\n    ]\n    teams = [{\"team\": \"core\", \"lead\": \"ada\"}]\n    out = Query(PEOPLE).join(teams, \"team\", \"team\", how=\"left\").select(\"name\", \"lead\").run()\n    assert out == [\n        {\"name\": \"ada\", \"lead\": \"ada\"},\n        {\"name\": \"bob\", \"lead\": None},\n        {\"name\": \"cy\", \"lead\": \"ada\"},\n        {\"name\": \"di\", \"lead\": None},\n    ]\n"
+        }
+      ],
+      "hiddenTests": [
+        {
+          "name": "test_one_to_many_and_clashes",
+          "code": "def test_one_to_many_and_clashes():\n    PEOPLE = [\n        {\"id\": 1, \"name\": \"ada\", \"team\": \"core\", \"age\": 36},\n        {\"id\": 2, \"name\": \"bob\", \"team\": \"web\", \"age\": 28},\n        {\"id\": 3, \"name\": \"cy\", \"team\": \"core\", \"age\": 41},\n        {\"id\": 4, \"name\": \"di\", \"team\": None, \"age\": 23},\n    ]\n    orders = [{\"owner\": 1, \"id\": 10}, {\"owner\": 1, \"id\": 11}, {\"owner\": 3, \"id\": 12}]\n    out = Query(PEOPLE).join(orders, \"id\", \"owner\").select(\"name\", \"id\", \"id_right\").run()\n    assert out == [\n        {\"name\": \"ada\", \"id\": 1, \"id_right\": 10},\n        {\"name\": \"ada\", \"id\": 1, \"id_right\": 11},\n        {\"name\": \"cy\", \"id\": 3, \"id_right\": 12},\n    ]\n"
+        },
+        {
+          "name": "test_join_then_group",
+          "code": "def test_join_then_group():\n    PEOPLE = [\n        {\"id\": 1, \"name\": \"ada\", \"team\": \"core\", \"age\": 36},\n        {\"id\": 2, \"name\": \"bob\", \"team\": \"web\", \"age\": 28},\n        {\"id\": 3, \"name\": \"cy\", \"team\": \"core\", \"age\": 41},\n        {\"id\": 4, \"name\": \"di\", \"team\": None, \"age\": 23},\n    ]\n    orders = [{\"owner\": 1, \"total\": 5}, {\"owner\": 1, \"total\": 7}, {\"owner\": 2, \"total\": 1}]\n    out = (\n        Query(PEOPLE).join(orders, \"id\", \"owner\").group_by(\"team\")\n        .aggregate(revenue=(\"sum\", \"total\")).order_by(\"revenue\", descending=True).run()\n    )\n    assert out == [{\"team\": \"core\", \"revenue\": 12}, {\"team\": \"web\", \"revenue\": 1}]\n"
+        },
+        {
+          "name": "test_none_keys_never_match",
+          "code": "def test_none_keys_never_match():\n    PEOPLE = [\n        {\"id\": 1, \"name\": \"ada\", \"team\": \"core\", \"age\": 36},\n        {\"id\": 2, \"name\": \"bob\", \"team\": \"web\", \"age\": 28},\n        {\"id\": 3, \"name\": \"cy\", \"team\": \"core\", \"age\": 41},\n        {\"id\": 4, \"name\": \"di\", \"team\": None, \"age\": 23},\n    ]\n    teams = [{\"team\": None, \"lead\": \"ghost\"}]\n    out = Query(PEOPLE).join(teams, \"team\", \"team\", how=\"left\").where(\"name\", \"=\", \"di\").run()\n    assert out == [{\"id\": 4, \"name\": \"di\", \"team\": None, \"age\": 23, \"lead\": None}]\n"
+        },
+        {
+          "name": "test_join_order_independent_of_builder_order",
+          "code": "def test_join_order_independent_of_builder_order():\n    PEOPLE = [\n        {\"id\": 1, \"name\": \"ada\", \"team\": \"core\", \"age\": 36},\n        {\"id\": 2, \"name\": \"bob\", \"team\": \"web\", \"age\": 28},\n        {\"id\": 3, \"name\": \"cy\", \"team\": \"core\", \"age\": 41},\n        {\"id\": 4, \"name\": \"di\", \"team\": None, \"age\": 23},\n    ]\n    teams = [{\"team\": \"core\", \"lead\": \"ada\"}]\n    a = Query(PEOPLE).where(\"lead\", \"=\", \"ada\").join(teams, \"team\", \"team\").select(\"name\").run()\n    assert a == [{\"name\": \"ada\"}, {\"name\": \"cy\"}]\n"
+        },
+        {
+          "name": "test_unknown_join_type",
+          "code": "def test_unknown_join_type():\n    try:\n        Query([]).join([], \"a\", \"a\", how=\"outer\")\n    except ValueError:\n        return\n    raise AssertionError(\"expected ValueError\")\n"
+        },
+        {
+          "name": "test_large_hash_join",
+          "description": "A nested-loop join is 900 million comparisons, so this needs a hash join.",
+          "code": "def test_large_hash_join():\n    left = [{\"id\": i, \"g\": i % 10} for i in range(30_000)]\n    right = [{\"rid\": i, \"val\": i * 2} for i in range(30_000)]\n    out = Query(left).join(right, \"id\", \"rid\").group_by(\"g\").aggregate(s=(\"sum\", \"val\")).order_by(\"g\").run()\n    assert len(out) == 10\n    assert out[0] == {\"g\": 0, \"s\": sum(i * 2 for i in range(0, 30_000, 10))}\n"
+        }
+      ],
+      "hints": [
+        "Joins come first in the pipeline. Everything after them just sees wider rows.",
+        "Implement a hash join: index the right rows by `right_on` (skipping `None`), then probe for each left row.",
+        "Collect the union of right columns up front so left-join misses can fill them with `None`, using the same naming rules as matches."
+      ],
+      "solution": {
+        "code": "import operator\n\nOPS = {\n    \"=\": operator.eq,\n    \"!=\": operator.ne,\n    \"<\": operator.lt,\n    \"<=\": operator.le,\n    \">\": operator.gt,\n    \">=\": operator.ge,\n}\n\n\ndef _sorted(rows: list[dict], keys) -> list[dict]:\n    # Apply the least significant key first; Python's sort is stable.\n    for column, descending in reversed(keys):\n        present = [r for r in rows if r.get(column) is not None]\n        missing = [r for r in rows if r.get(column) is None]\n        present.sort(key=lambda r: r[column], reverse=descending)\n        rows = present + missing\n    return rows\n\n\nAGGREGATES = (\"count\", \"sum\", \"avg\", \"min\", \"max\")\n\n\ndef _aggregate(func: str, column, rows: list[dict]):\n    if func == \"count\":\n        return len(rows) if column is None else sum(1 for r in rows if r.get(column) is not None)\n    values = [r[column] for r in rows if r.get(column) is not None]\n    if not values:\n        return None\n    if func == \"sum\":\n        return sum(values)\n    if func == \"avg\":\n        return round(sum(values) / len(values), 2)\n    return min(values) if func == \"min\" else max(values)\n\n\ndef _group(rows: list[dict], keys: tuple, aggregates: dict) -> list[dict]:\n    groups: dict[tuple, list[dict]] = {}\n    for r in rows:\n        groups.setdefault(tuple(r.get(k) for k in keys), []).append(r)\n    if not keys and not groups:\n        groups[()] = []  # an aggregate over zero rows still yields one row\n    out = []\n    for key, members in groups.items():\n        row = dict(zip(keys, key))\n        for alias, (func, column) in aggregates.items():\n            row[alias] = _aggregate(func, column, members)\n        out.append(row)\n    return out\n\n\ndef _join(left: list[dict], right: list[dict], left_on: str, right_on: str, how: str) -> list[dict]:\n    index: dict[object, list[dict]] = {}\n    right_columns: dict[str, None] = {}\n    for r in right:\n        for c in r:\n            if not (c == right_on and left_on == right_on):\n                right_columns.setdefault(c)\n        if r.get(right_on) is not None:\n            index.setdefault(r[right_on], []).append(r)\n\n    def merge(l_row: dict, r_row: dict) -> dict:\n        out = dict(l_row)\n        for c in right_columns:\n            out[f\"{c}_right\" if c in l_row else c] = r_row.get(c)\n        return out\n\n    out = []\n    for l_row in left:\n        key = l_row.get(left_on)\n        matches = index.get(key, []) if key is not None else []\n        if matches:\n            out.extend(merge(l_row, m) for m in matches)\n        elif how == \"left\":\n            out.append(merge(l_row, {}))\n    return out\n\n\nclass Query:\n    def __init__(self, rows: list[dict], **state):\n        self._rows = rows\n        self._state = {\n            \"columns\": None, \"filters\": (), \"order\": (), \"limit\": None, \"offset\": 0,\n            \"group\": None, \"aggregates\": {}, \"joins\": (),\n        }\n        self._state.update(state)\n\n    def _copy(self, **changes) -> \"Query\":\n        return Query(self._rows, **{**self._state, **changes})\n\n    def select(self, *columns: str) -> \"Query\":\n        return self._copy(columns=columns or None)\n\n    def where(self, column: str, op: str, value) -> \"Query\":\n        if op not in OPS:\n            raise ValueError(f\"unsupported operator {op!r}\")\n        return self._copy(filters=(*self._state[\"filters\"], (column, OPS[op], value)))\n\n    def order_by(self, column: str, descending: bool = False) -> \"Query\":\n        return self._copy(order=(*self._state[\"order\"], (column, descending)))\n\n    def limit(self, n: int, offset: int = 0) -> \"Query\":\n        return self._copy(limit=n, offset=offset)\n\n    def group_by(self, *columns: str) -> \"Query\":\n        return self._copy(group=columns)\n\n    def aggregate(self, **aliases: tuple) -> \"Query\":\n        for alias, (func, _column) in aliases.items():\n            if func not in AGGREGATES:\n                raise ValueError(f\"unsupported aggregate {func!r} for {alias!r}\")\n        return self._copy(aggregates={**self._state[\"aggregates\"], **aliases})\n\n    def join(self, rows: list[dict], left_on: str, right_on: str, how: str = \"inner\") -> \"Query\":\n        if how not in (\"inner\", \"left\"):\n            raise ValueError(f\"unsupported join type {how!r}\")\n        return self._copy(joins=(*self._state[\"joins\"], (rows, left_on, right_on, how)))\n\n    def run(self) -> list[dict]:\n        s = self._state\n        rows = self._rows\n        for right, left_on, right_on, how in s[\"joins\"]:\n            rows = _join(rows, right, left_on, right_on, how)\n        rows = [\n            r for r in rows\n            if all(r.get(c) is not None and fn(r[c], v) for c, fn, v in s[\"filters\"])\n        ]\n        if s[\"group\"] is not None or s[\"aggregates\"]:\n            rows = _group(rows, s[\"group\"] or (), s[\"aggregates\"])\n        rows = _sorted(rows, s[\"order\"])\n        end = None if s[\"limit\"] is None else s[\"offset\"] + s[\"limit\"]\n        rows = rows[s[\"offset\"]:end]\n        if s[\"columns\"] is None:\n            return [dict(r) for r in rows]\n        return [{c: r.get(c) for c in s[\"columns\"]} for r in rows]\n",
+        "explanation": "Joins are a new first stage in `run()`. Each is a hash join, O(L + R + output),\napplied in call order, so every later stage (filters, groups, sorts, projections)\nworks on the joined rows without changes. Column naming is centralised in one\n`merge` helper, so inner matches and left-join misses produce identical shapes. With\nthe builder-records-intent design from stage 1, every stage added a step, and none\nneeded a rewrite.",
+        "timeComplexity": "O(L + R + output) per join",
+        "spaceComplexity": "O(R + output)"
+      }
+    }
+  ]
+}

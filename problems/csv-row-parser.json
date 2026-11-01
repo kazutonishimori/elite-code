@@ -1,0 +1,82 @@
+{
+  "schemaVersion": 1,
+  "id": "csv-row-parser",
+  "title": "CSV Row Parser",
+  "type": "standard",
+  "difficulty": "medium",
+  "tags": [
+    "string-parsing",
+    "string"
+  ],
+  "summary": "Split one RFC 4180-style CSV row into fields, handling quotes and doubled quotes.",
+  "starterCode": "def parse_csv_row(row: str) -> list[str]:\n    \"\"\"Split a CSV row into fields.\"\"\"\n    raise NotImplementedError\n",
+  "estimatedMinutes": 20,
+  "companies": [
+    "Snowflake"
+  ],
+  "topics": [
+    "ingestion"
+  ],
+  "stages": [
+    {
+      "id": "parse-row",
+      "title": "Parse a CSV row",
+      "requirement": "Write `parse_csv_row(row)` that splits a single CSV line into fields **without** using the\n`csv` module:\n\n- Fields are separated by commas. An empty row `\"\"` is one empty field, `[\"\"]`.\n- A field may be wrapped in double quotes. Then it may contain commas, and `\"\"` inside it\n  means one literal `\"`.\n- Quotes only have special meaning when they **start** a field. `ab\"c` is the literal text `ab\"c`.\n- After a closing quote, the next character must be a comma or the end of the row.\n  Otherwise raise `ValueError`, as you should for an unterminated quoted field.\n- Whitespace is preserved exactly.\n\n```python\nparse_csv_row('1,\"Smith, John\",\"He said \"\"hi\"\"\",')\n# -> [\"1\", \"Smith, John\", 'He said \"hi\"', \"\"]\n```",
+      "visibleTests": [
+        {
+          "name": "test_example",
+          "code": "def test_example():\n    assert parse_csv_row('1,\"Smith, John\",\"He said \"\"hi\"\"\",') == [\"1\", \"Smith, John\", 'He said \"hi\"', \"\"]\n"
+        },
+        {
+          "name": "test_simple",
+          "code": "def test_simple():\n    assert parse_csv_row(\"a,b,c\") == [\"a\", \"b\", \"c\"]\n"
+        }
+      ],
+      "hiddenTests": [
+        {
+          "name": "test_empty_row",
+          "code": "def test_empty_row():\n    assert parse_csv_row(\"\") == [\"\"]\n"
+        },
+        {
+          "name": "test_only_commas",
+          "code": "def test_only_commas():\n    assert parse_csv_row(\",,\") == [\"\", \"\", \"\"]\n"
+        },
+        {
+          "name": "test_quote_in_middle_is_literal",
+          "code": "def test_quote_in_middle_is_literal():\n    assert parse_csv_row('ab\"c,d') == ['ab\"c', \"d\"]\n"
+        },
+        {
+          "name": "test_whitespace_preserved",
+          "code": "def test_whitespace_preserved():\n    assert parse_csv_row(\" a , b \") == [\" a \", \" b \"]\n"
+        },
+        {
+          "name": "test_empty_quoted_field",
+          "code": "def test_empty_quoted_field():\n    assert parse_csv_row('\"\",x') == [\"\", \"x\"]\n"
+        },
+        {
+          "name": "test_garbage_after_closing_quote",
+          "code": "def test_garbage_after_closing_quote():\n    try:\n        parse_csv_row('\"abc\"d,e')\n    except ValueError:\n        return\n    raise AssertionError(\"expected ValueError\")\n"
+        },
+        {
+          "name": "test_unterminated_quote",
+          "code": "def test_unterminated_quote():\n    try:\n        parse_csv_row('\"abc,d')\n    except ValueError:\n        return\n    raise AssertionError(\"expected ValueError\")\n"
+        },
+        {
+          "name": "test_matches_csv_module",
+          "code": "def test_matches_csv_module():\n    import csv\n    rows = ['x,\"a,b\",c', '\"q\"\"uote\",z', ',\"\",', 'plain']\n    for row in rows:\n        assert parse_csv_row(row) == next(csv.reader([row])), row\n"
+        }
+      ],
+      "hints": [
+        "Track a small state machine: are you inside a quoted field or not?",
+        "When a field starts with a quote, scan to the closing quote. A doubled `\"\"` inside is an escaped quote, not the end.",
+        "After the closing quote, check that the next character is a comma or the end of the line before starting the next field."
+      ],
+      "solution": {
+        "code": "def parse_csv_row(row: str) -> list[str]:\n    fields: list[str] = []\n    i, n = 0, len(row)\n    while True:\n        if i < n and row[i] == '\"':\n            i += 1\n            chars: list[str] = []\n            while True:\n                if i >= n:\n                    raise ValueError(\"unterminated quoted field\")\n                if row[i] == '\"':\n                    if i + 1 < n and row[i + 1] == '\"':\n                        chars.append('\"')\n                        i += 2\n                        continue\n                    i += 1\n                    break\n                chars.append(row[i])\n                i += 1\n            if i < n and row[i] != \",\":\n                raise ValueError(f\"unexpected character after closing quote at {i}\")\n            fields.append(\"\".join(chars))\n        else:\n            end = row.find(\",\", i)\n            end = n if end == -1 else end\n            fields.append(row[i:end])\n            i = end\n        if i >= n:\n            return fields\n        i += 1  # skip the comma; a trailing comma yields a final empty field\n        if i == n:\n            fields.append(\"\")\n            return fields\n",
+        "explanation": "Parse field by field. A field that starts with `\"` is consumed by an inner loop that\nturns `\"\"` into `\"` and stops at a lone quote. After it, only a comma or the end of the\nrow is legal. Any other field runs to the next comma, with quotes treated literally.\nTrailing commas need care: they produce one more empty field.",
+        "timeComplexity": "O(n)",
+        "spaceComplexity": "O(n)"
+      }
+    }
+  ]
+}

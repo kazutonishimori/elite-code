@@ -1,0 +1,77 @@
+{
+  "schemaVersion": 1,
+  "id": "pipeline-build-order",
+  "title": "Pipeline Build Order",
+  "type": "standard",
+  "difficulty": "medium",
+  "tags": [
+    "topological-sort",
+    "graph",
+    "heap"
+  ],
+  "summary": "Order data pipeline tables so every table builds after its upstream dependencies.",
+  "starterCode": "def build_order(tables: list[str], deps: list[tuple[str, str]]) -> list[str]:\n    \"\"\"deps contains (upstream, downstream) pairs. Raise ValueError on a cycle.\"\"\"\n    raise NotImplementedError\n",
+  "estimatedMinutes": 25,
+  "companies": [
+    "Airbnb",
+    "dbt Labs"
+  ],
+  "topics": [
+    "data pipelines"
+  ],
+  "stages": [
+    {
+      "id": "order",
+      "title": "Deterministic build order",
+      "requirement": "Our warehouse has `tables` (unique names) and dependencies `(upstream, downstream)`: the\nupstream table must be built before the downstream one. Write `build_order(tables, deps)`\nreturning a list containing every table exactly once, so that each dependency's upstream\ncomes before its downstream.\n\nMany orders can be valid, so make it deterministic: whenever several tables are ready,\nbuild the **alphabetically smallest** next. If the dependencies contain a cycle, raise\n`ValueError`. Every name in `deps` appears in `tables`. Duplicate dependency pairs may occur.\n\n```python\nbuild_order([\"orders\", \"users\", \"revenue\", \"raw\"],\n            [(\"raw\", \"orders\"), (\"raw\", \"users\"), (\"orders\", \"revenue\"), (\"users\", \"revenue\")])\n# -> [\"raw\", \"orders\", \"users\", \"revenue\"]\n```",
+      "visibleTests": [
+        {
+          "name": "test_example",
+          "code": "def test_example():\n    tables = [\"orders\", \"users\", \"revenue\", \"raw\"]\n    deps = [(\"raw\", \"orders\"), (\"raw\", \"users\"), (\"orders\", \"revenue\"), (\"users\", \"revenue\")]\n    assert build_order(tables, deps) == [\"raw\", \"orders\", \"users\", \"revenue\"]\n"
+        },
+        {
+          "name": "test_cycle_raises",
+          "code": "def test_cycle_raises():\n    try:\n        build_order([\"a\", \"b\"], [(\"a\", \"b\"), (\"b\", \"a\")])\n    except ValueError:\n        pass\n    else:\n        raise AssertionError(\"expected ValueError for a cycle\")\n"
+        }
+      ],
+      "hiddenTests": [
+        {
+          "name": "test_no_dependencies_alphabetical",
+          "code": "def test_no_dependencies_alphabetical():\n    assert build_order([\"c\", \"a\", \"b\"], []) == [\"a\", \"b\", \"c\"]\n"
+        },
+        {
+          "name": "test_smallest_ready_first",
+          "description": "'a' isn't ready until 'b' is built, so plain alphabetical sorting is wrong.",
+          "code": "def test_smallest_ready_first():\n    deps = [(\"b\", \"a\")]\n    assert build_order([\"a\", \"b\", \"c\"], deps) == [\"b\", \"a\", \"c\"]\n"
+        },
+        {
+          "name": "test_duplicate_edges",
+          "code": "def test_duplicate_edges():\n    assert build_order([\"x\", \"y\"], [(\"x\", \"y\"), (\"x\", \"y\")]) == [\"x\", \"y\"]\n"
+        },
+        {
+          "name": "test_self_loop_is_cycle",
+          "code": "def test_self_loop_is_cycle():\n    try:\n        build_order([\"a\"], [(\"a\", \"a\")])\n    except ValueError:\n        return\n    raise AssertionError(\"a self-dependency is a cycle\")\n"
+        },
+        {
+          "name": "test_empty",
+          "code": "def test_empty():\n    assert build_order([], []) == []\n"
+        },
+        {
+          "name": "test_large_chain",
+          "code": "def test_large_chain():\n    names = [f\"t{i:05d}\" for i in range(20_000)]\n    deps = [(names[i], names[i + 1]) for i in range(len(names) - 1)]\n    assert build_order(list(reversed(names)), deps) == names\n"
+        }
+      ],
+      "hints": [
+        "Count how many unbuilt upstream tables each table still waits on (its in-degree).",
+        "Kahn's algorithm: start with tables of in-degree 0. When you build one, decrement its downstream tables. Any that reach 0 become ready.",
+        "Use a min-heap for the ready set so the alphabetically smallest is built next. If you build fewer than all tables, there's a cycle."
+      ],
+      "solution": {
+        "code": "import heapq\nfrom collections import defaultdict\n\n\ndef build_order(tables: list[str], deps: list[tuple[str, str]]) -> list[str]:\n    downstream: dict[str, set[str]] = defaultdict(set)\n    indegree = {t: 0 for t in tables}\n    for up, down in set(deps):\n        downstream[up].add(down)\n        indegree[down] += 1\n    ready = [t for t, d in indegree.items() if d == 0]\n    heapq.heapify(ready)\n    order: list[str] = []\n    while ready:\n        table = heapq.heappop(ready)\n        order.append(table)\n        for nxt in downstream[table]:\n            indegree[nxt] -= 1\n            if indegree[nxt] == 0:\n                heapq.heappush(ready, nxt)\n    if len(order) != len(tables):\n        raise ValueError(\"dependency cycle detected\")\n    return order\n",
+        "explanation": "Kahn's algorithm with a min-heap for the ready set gives the lexicographically smallest\nvalid order. Deduplicating edges with `set(deps)` keeps the in-degrees correct. A cycle\n(including a self-loop) leaves some tables with positive in-degree forever, so fewer than\n`len(tables)` get built, and that's the signal to raise.",
+        "timeComplexity": "O((V + E) log V)",
+        "spaceComplexity": "O(V + E)"
+      }
+    }
+  ]
+}

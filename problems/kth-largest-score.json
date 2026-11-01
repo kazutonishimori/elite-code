@@ -1,0 +1,61 @@
+{
+  "schemaVersion": 1,
+  "id": "kth-largest-score",
+  "title": "Kth Largest Score",
+  "type": "standard",
+  "difficulty": "easy",
+  "tags": [
+    "heap",
+    "design"
+  ],
+  "summary": "Track the k-th highest score on a live leaderboard as new scores arrive.",
+  "starterCode": "class KthLargest:\n    def __init__(self, k: int, scores: list[int]):\n        pass\n\n    def add(self, score: int) -> int | None:\n        \"\"\"Add a score and return the current k-th largest (None if fewer than k).\"\"\"\n        pass\n",
+  "estimatedMinutes": 15,
+  "companies": [
+    "Riot Games"
+  ],
+  "topics": [
+    "gaming"
+  ],
+  "stages": [
+    {
+      "id": "kth-largest",
+      "title": "Kth largest",
+      "requirement": "A leaderboard shows the score needed to make the top `k`. Implement `KthLargest(k, scores)`,\nwhere `scores` is the initial list (maybe empty), and `add(score)`, which records a score and\nreturns the **k-th largest** score seen so far, counting duplicates. If fewer than `k`\nscores have been seen, return `None`. `k >= 1`.\n\n```python\nboard = KthLargest(3, [4, 5, 8, 2])\nboard.add(3)   # -> 4\nboard.add(5)   # -> 5\nboard.add(10)  # -> 5\nboard.add(9)   # -> 8\n```\n\nUp to 100,000 `add` calls.",
+      "visibleTests": [
+        {
+          "name": "test_example",
+          "code": "def test_example():\n    board = KthLargest(3, [4, 5, 8, 2])\n    assert [board.add(s) for s in [3, 5, 10, 9]] == [4, 5, 5, 8]\n"
+        }
+      ],
+      "hiddenTests": [
+        {
+          "name": "test_fewer_than_k",
+          "code": "def test_fewer_than_k():\n    board = KthLargest(2, [])\n    assert board.add(1) is None\n    assert board.add(5) == 1\n"
+        },
+        {
+          "name": "test_duplicates_count",
+          "code": "def test_duplicates_count():\n    board = KthLargest(2, [7, 7])\n    assert board.add(1) == 7\n"
+        },
+        {
+          "name": "test_k_equals_one_is_max",
+          "code": "def test_k_equals_one_is_max():\n    board = KthLargest(1, [])\n    assert [board.add(s) for s in [3, -1, 9, 4]] == [3, 3, 9, 9]\n"
+        },
+        {
+          "name": "test_large",
+          "code": "def test_large():\n    board = KthLargest(100, list(range(1000)))\n    last = None\n    for s in range(1000, 101_000):\n        last = board.add(s)\n    assert last == 100_900\n"
+        }
+      ],
+      "hints": [
+        "You only ever need the top k scores, not all of them.",
+        "Keep a min-heap of size at most k. Its root is the k-th largest. Push the new score and pop the smallest when the heap exceeds k."
+      ],
+      "solution": {
+        "code": "import heapq\n\n\nclass KthLargest:\n    def __init__(self, k: int, scores: list[int]):\n        self.k = k\n        self.heap: list[int] = []\n        for s in scores:\n            self._push(s)\n\n    def _push(self, score: int) -> None:\n        if len(self.heap) < self.k:\n            heapq.heappush(self.heap, score)\n        elif score > self.heap[0]:\n            heapq.heapreplace(self.heap, score)\n\n    def add(self, score: int) -> int | None:\n        self._push(score)\n        return self.heap[0] if len(self.heap) == self.k else None\n",
+        "explanation": "A min-heap holding the k largest scores has the k-th largest at its root. New scores\nreplace the root only when they beat it (`heapreplace`, O(log k)). Before k scores\nexist there is no k-th largest, so we return `None`.",
+        "timeComplexity": "O(log k) per add",
+        "spaceComplexity": "O(k)"
+      }
+    }
+  ]
+}

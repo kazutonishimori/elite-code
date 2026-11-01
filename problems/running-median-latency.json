@@ -1,0 +1,68 @@
+{
+  "schemaVersion": 1,
+  "id": "running-median-latency",
+  "title": "Running Median Latency",
+  "type": "standard",
+  "difficulty": "hard",
+  "tags": [
+    "heap",
+    "design",
+    "time-series"
+  ],
+  "summary": "Report the median request latency after every sample in a high-volume stream.",
+  "starterCode": "class MedianTracker:\n    def add(self, latency_ms: int) -> None:\n        pass\n\n    def median(self) -> float | None:\n        pass\n",
+  "estimatedMinutes": 30,
+  "companies": [
+    "Uber",
+    "Lyft"
+  ],
+  "topics": [
+    "observability"
+  ],
+  "stages": [
+    {
+      "id": "median",
+      "title": "Streaming median",
+      "requirement": "Implement `MedianTracker` with `add(latency_ms)` and `median()`. `median()` returns the\nmedian of every value added so far, as a float: the middle value for an odd count, the\nmean of the two middle values for an even count. It returns `None` before any value is added.\n\n```python\nt = MedianTracker()\nt.add(5); t.median()   # -> 5.0\nt.add(15); t.median()  # -> 10.0\nt.add(1); t.median()   # -> 5.0\n```\n\nTests call `add` and `median` 100,000 times each, so sorting on every call is too slow.",
+      "visibleTests": [
+        {
+          "name": "test_example",
+          "code": "def test_example():\n    t = MedianTracker()\n    t.add(5)\n    assert t.median() == 5.0\n    t.add(15)\n    assert t.median() == 10.0\n    t.add(1)\n    assert t.median() == 5.0\n"
+        },
+        {
+          "name": "test_empty",
+          "code": "def test_empty():\n    assert MedianTracker().median() is None\n"
+        }
+      ],
+      "hiddenTests": [
+        {
+          "name": "test_duplicates_and_negatives",
+          "code": "def test_duplicates_and_negatives():\n    t = MedianTracker()\n    for v in [3, 3, -2, 3]:\n        t.add(v)\n    assert t.median() == 3.0\n"
+        },
+        {
+          "name": "test_returns_float",
+          "code": "def test_returns_float():\n    t = MedianTracker()\n    t.add(1)\n    t.add(2)\n    assert t.median() == 1.5 and isinstance(t.median(), float)\n    t2 = MedianTracker()\n    t2.add(4)\n    assert isinstance(t2.median(), float)\n"
+        },
+        {
+          "name": "test_matches_sorted_oracle",
+          "code": "def test_matches_sorted_oracle():\n    import random\n    rng = random.Random(3)\n    t = MedianTracker()\n    seen = []\n    for _ in range(2000):\n        v = rng.randint(-1000, 1000)\n        t.add(v)\n        seen.append(v)\n        s = sorted(seen)\n        n = len(s)\n        expected = float(s[n // 2]) if n % 2 else (s[n // 2 - 1] + s[n // 2]) / 2\n        assert t.median() == expected\n"
+        },
+        {
+          "name": "test_large_stream",
+          "code": "def test_large_stream():\n    t = MedianTracker()\n    for i in range(100_000):\n        t.add((i * 7919) % 100_003)\n        t.median()\n    assert t.median() is not None\n"
+        }
+      ],
+      "hints": [
+        "Split the values into a lower half and an upper half. The median sits at their boundary.",
+        "Use a max-heap for the lower half (store negated values with `heapq`) and a min-heap for the upper half.",
+        "After each add, rebalance so the lower heap has the same number of items as the upper heap, or one more. The median is then a heap top, or the mean of both tops."
+      ],
+      "solution": {
+        "code": "import heapq\n\n\nclass MedianTracker:\n    def __init__(self):\n        self.low: list[int] = []   # max-heap via negation\n        self.high: list[int] = []  # min-heap\n\n    def add(self, latency_ms: int) -> None:\n        if self.low and latency_ms > -self.low[0]:\n            heapq.heappush(self.high, latency_ms)\n        else:\n            heapq.heappush(self.low, -latency_ms)\n        if len(self.low) > len(self.high) + 1:\n            heapq.heappush(self.high, -heapq.heappop(self.low))\n        elif len(self.high) > len(self.low):\n            heapq.heappush(self.low, -heapq.heappop(self.high))\n\n    def median(self) -> float | None:\n        if not self.low:\n            return None\n        if len(self.low) > len(self.high):\n            return float(-self.low[0])\n        return (-self.low[0] + self.high[0]) / 2\n",
+        "explanation": "Two heaps partition the data: `low` (a max-heap) holds the smaller half and `high` (a\nmin-heap) the larger. The invariant `len(low) - len(high)` in {0, 1} puts the median at\n`low`'s top (odd count) or at the mean of both tops (even count). Each add is\nO(log n) with at most one rebalancing move, and each median query is O(1).",
+        "timeComplexity": "O(log n) add, O(1) median",
+        "spaceComplexity": "O(n)"
+      }
+    }
+  ]
+}

@@ -1,0 +1,68 @@
+{
+  "schemaVersion": 1,
+  "id": "top-k-products",
+  "title": "Top K Products by Revenue",
+  "type": "standard",
+  "difficulty": "medium",
+  "tags": [
+    "heap",
+    "hash-map",
+    "aggregation"
+  ],
+  "summary": "Rank products by total revenue across a large order log, with deterministic tie-breaking.",
+  "starterCode": "def top_k_products(orders: list[dict], k: int) -> list[tuple[str, int]]:\n    \"\"\"Return [(sku, revenue_cents)] for the k highest-revenue products.\"\"\"\n    raise NotImplementedError\n",
+  "estimatedMinutes": 20,
+  "companies": [
+    "Amazon",
+    "Instacart"
+  ],
+  "topics": [
+    "analytics"
+  ],
+  "stages": [
+    {
+      "id": "top-k",
+      "title": "Top K by revenue",
+      "requirement": "Each order line is a dict: `{\"sku\": str, \"qty\": int, \"unit_price_cents\": int}`. Revenue for\na line is `qty * unit_price_cents`. The same SKU appears on many lines.\n\nWrite `top_k_products(orders, k)` returning the `k` SKUs with the highest **total** revenue as\n`(sku, revenue)` tuples, highest first. Break ties by SKU **ascending**. If there are fewer\nthan `k` SKUs, return them all. Lines with `qty == 0` still count, as zero revenue.\n\n```python\norders = [\n    {\"sku\": \"mug\", \"qty\": 2, \"unit_price_cents\": 1000},\n    {\"sku\": \"tee\", \"qty\": 1, \"unit_price_cents\": 2500},\n    {\"sku\": \"mug\", \"qty\": 1, \"unit_price_cents\": 1000},\n    {\"sku\": \"cap\", \"qty\": 3, \"unit_price_cents\": 500},\n]\ntop_k_products(orders, 2)  # -> [(\"mug\", 3000), (\"tee\", 2500)]\n```\n\nUp to 200,000 lines and 50,000 SKUs; `k` can be much smaller than the number of SKUs.",
+      "visibleTests": [
+        {
+          "name": "test_example",
+          "code": "def test_example():\n    orders = [\n        {\"sku\": \"mug\", \"qty\": 2, \"unit_price_cents\": 1000},\n        {\"sku\": \"tee\", \"qty\": 1, \"unit_price_cents\": 2500},\n        {\"sku\": \"mug\", \"qty\": 1, \"unit_price_cents\": 1000},\n        {\"sku\": \"cap\", \"qty\": 3, \"unit_price_cents\": 500},\n    ]\n    assert top_k_products(orders, 2) == [(\"mug\", 3000), (\"tee\", 2500)]\n"
+        },
+        {
+          "name": "test_fewer_skus_than_k",
+          "code": "def test_fewer_skus_than_k():\n    assert top_k_products([{\"sku\": \"a\", \"qty\": 1, \"unit_price_cents\": 5}], 3) == [(\"a\", 5)]\n"
+        }
+      ],
+      "hiddenTests": [
+        {
+          "name": "test_ties_break_by_sku",
+          "code": "def test_ties_break_by_sku():\n    orders = [{\"sku\": s, \"qty\": 1, \"unit_price_cents\": 100} for s in [\"b\", \"c\", \"a\"]]\n    assert top_k_products(orders, 2) == [(\"a\", 100), (\"b\", 100)]\n"
+        },
+        {
+          "name": "test_zero_quantity_lines",
+          "code": "def test_zero_quantity_lines():\n    orders = [{\"sku\": \"z\", \"qty\": 0, \"unit_price_cents\": 999}, {\"sku\": \"y\", \"qty\": 1, \"unit_price_cents\": 1}]\n    assert top_k_products(orders, 5) == [(\"y\", 1), (\"z\", 0)]\n"
+        },
+        {
+          "name": "test_empty_and_k_zero",
+          "code": "def test_empty_and_k_zero():\n    assert top_k_products([], 3) == []\n    assert top_k_products([{\"sku\": \"a\", \"qty\": 1, \"unit_price_cents\": 1}], 0) == []\n"
+        },
+        {
+          "name": "test_large",
+          "code": "def test_large():\n    orders = [{\"sku\": f\"s{i % 50_000:05d}\", \"qty\": (i % 7) + 1, \"unit_price_cents\": (i % 1000) + 1} for i in range(200_000)]\n    result = top_k_products(orders, 3)\n    totals = {}\n    for o in orders:\n        totals[o[\"sku\"]] = totals.get(o[\"sku\"], 0) + o[\"qty\"] * o[\"unit_price_cents\"]\n    expected = sorted(totals.items(), key=lambda kv: (-kv[1], kv[0]))[:3]\n    assert result == expected\n"
+        }
+      ],
+      "hints": [
+        "First aggregate revenue per SKU. Then the question is how to pick the best k efficiently.",
+        "`heapq.nsmallest(k, items, key=...)` selects the top k in O(n log k). Use a key that sorts by negative revenue, then SKU.",
+        "Sorting everything is O(n log n) and acceptable at this scale. Mention the heap trade-off when k << n."
+      ],
+      "solution": {
+        "code": "import heapq\nfrom collections import defaultdict\n\n\ndef top_k_products(orders: list[dict], k: int) -> list[tuple[str, int]]:\n    revenue: dict[str, int] = defaultdict(int)\n    for line in orders:\n        revenue[line[\"sku\"]] += line[\"qty\"] * line[\"unit_price_cents\"]\n    return heapq.nsmallest(k, revenue.items(), key=lambda kv: (-kv[1], kv[0]))\n",
+        "explanation": "Aggregate with a `defaultdict(int)`, then select. `heapq.nsmallest` with the key\n`(-revenue, sku)` returns the top k in the required order in O(m log k) for m SKUs. That\nbeats a full sort when k is small, and it handles ties deterministically. `nsmallest`\nalso returns everything when k exceeds m, and `[]` when k is 0.",
+        "timeComplexity": "O(n + m log k) for n lines and m SKUs",
+        "spaceComplexity": "O(m)"
+      }
+    }
+  ]
+}

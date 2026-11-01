@@ -1,0 +1,83 @@
+{
+  "schemaVersion": 1,
+  "id": "parse-logfmt",
+  "title": "Parse logfmt Lines",
+  "type": "standard",
+  "difficulty": "medium",
+  "tags": [
+    "string-parsing",
+    "string"
+  ],
+  "summary": "Parse key=value structured log lines, including quoted values with escapes.",
+  "starterCode": "def parse_logfmt(line: str) -> dict[str, str | bool]:\n    \"\"\"Parse one logfmt line into a dict.\"\"\"\n    raise NotImplementedError\n",
+  "estimatedMinutes": 25,
+  "companies": [
+    "Heroku",
+    "Grafana Labs"
+  ],
+  "topics": [
+    "observability"
+  ],
+  "stages": [
+    {
+      "id": "parse",
+      "title": "Parse a logfmt line",
+      "requirement": "Our services log in **logfmt**: space-separated pairs like `level=info msg=\"user created\" id=42`.\nWrite `parse_logfmt(line)` returning a dict:\n\n- `key=value`: the value is everything up to the next space. Values stay **strings** (`\"42\"`).\n- `key=\"quoted value\"`: the value may contain spaces and `=`. Inside quotes, `\\\"` is a literal\n  quote and `\\\\` a literal backslash.\n- `key=` (empty value) maps to `\"\"`.\n- A bare `key` with no `=` maps to `True`.\n- Pairs are separated by one or more spaces. Leading and trailing spaces are ignored.\n- If a key repeats, the **last** occurrence wins.\n- Raise `ValueError` if a quoted value is never closed.\n\n```python\nparse_logfmt('level=info msg=\"user created\" id=42 debug')\n# -> {\"level\": \"info\", \"msg\": \"user created\", \"id\": \"42\", \"debug\": True}\n```",
+      "visibleTests": [
+        {
+          "name": "test_example",
+          "code": "def test_example():\n    assert parse_logfmt('level=info msg=\"user created\" id=42 debug') == {\n        \"level\": \"info\", \"msg\": \"user created\", \"id\": \"42\", \"debug\": True,\n    }\n"
+        },
+        {
+          "name": "test_empty_value",
+          "code": "def test_empty_value():\n    assert parse_logfmt(\"a= b=1\") == {\"a\": \"\", \"b\": \"1\"}\n"
+        }
+      ],
+      "hiddenTests": [
+        {
+          "name": "test_escapes_in_quotes",
+          "code": "def test_escapes_in_quotes():\n    line = r'msg=\"say \\\"hi\\\" to C:\\\\temp\" n=1'\n    assert parse_logfmt(line) == {\"msg\": 'say \"hi\" to C:\\\\temp', \"n\": \"1\"}\n"
+        },
+        {
+          "name": "test_equals_inside_quotes",
+          "code": "def test_equals_inside_quotes():\n    assert parse_logfmt('q=\"a=b c=d\"') == {\"q\": \"a=b c=d\"}\n"
+        },
+        {
+          "name": "test_multiple_spaces_and_trim",
+          "code": "def test_multiple_spaces_and_trim():\n    assert parse_logfmt(\"  a=1    b=2  \") == {\"a\": \"1\", \"b\": \"2\"}\n"
+        },
+        {
+          "name": "test_last_key_wins",
+          "code": "def test_last_key_wins():\n    assert parse_logfmt(\"a=1 a=2\") == {\"a\": \"2\"}\n"
+        },
+        {
+          "name": "test_empty_line",
+          "code": "def test_empty_line():\n    assert parse_logfmt(\"\") == {}\n    assert parse_logfmt(\"   \") == {}\n"
+        },
+        {
+          "name": "test_empty_quoted_value",
+          "code": "def test_empty_quoted_value():\n    assert parse_logfmt('a=\"\" b=x') == {\"a\": \"\", \"b\": \"x\"}\n"
+        },
+        {
+          "name": "test_unterminated_quote",
+          "code": "def test_unterminated_quote():\n    try:\n        parse_logfmt('msg=\"never closed')\n    except ValueError:\n        return\n    raise AssertionError(\"expected ValueError\")\n"
+        },
+        {
+          "name": "test_unicode",
+          "code": "def test_unicode():\n    assert parse_logfmt('user=zoë city=\"São Paulo\"') == {\"user\": \"zoë\", \"city\": \"São Paulo\"}\n"
+        }
+      ],
+      "hints": [
+        "`str.split()` breaks quoted values with spaces. You need a small hand-written scanner.",
+        "Walk the string with an index: read a key until `=` or a space. If `=` follows, read either a quoted value or a bare value.",
+        "For quoted values, loop character by character. On a backslash, take the next character literally. Stop at an unescaped quote."
+      ],
+      "solution": {
+        "code": "def parse_logfmt(line: str) -> dict[str, str | bool]:\n    result: dict[str, str | bool] = {}\n    i, n = 0, len(line)\n    while i < n:\n        if line[i] == \" \":\n            i += 1\n            continue\n        start = i\n        while i < n and line[i] not in \" =\":\n            i += 1\n        key = line[start:i]\n        if i >= n or line[i] == \" \":\n            result[key] = True\n            continue\n        i += 1  # skip \"=\"\n        if i < n and line[i] == '\"':\n            i += 1\n            chars: list[str] = []\n            while True:\n                if i >= n:\n                    raise ValueError(f\"unterminated quoted value for {key!r}\")\n                ch = line[i]\n                if ch == \"\\\\\" and i + 1 < n:\n                    chars.append(line[i + 1])\n                    i += 2\n                elif ch == '\"':\n                    i += 1\n                    break\n                else:\n                    chars.append(ch)\n                    i += 1\n            result[key] = \"\".join(chars)\n        else:\n            start = i\n            while i < n and line[i] != \" \":\n                i += 1\n            result[key] = line[start:i]\n    return result\n",
+        "explanation": "A single left-to-right scanner with an index handles every case in one pass: skip spaces,\nread a key, then branch on what follows. Quoted values get their own loop that honours\nbackslash escapes and fails loudly if the closing quote is missing. Assigning into the\ndict as we go makes the last duplicate key win for free.",
+        "timeComplexity": "O(n) for n characters",
+        "spaceComplexity": "O(n)"
+      }
+    }
+  ]
+}

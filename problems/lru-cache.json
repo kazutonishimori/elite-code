@@ -1,0 +1,69 @@
+{
+  "schemaVersion": 1,
+  "id": "lru-cache",
+  "title": "LRU Cache",
+  "type": "standard",
+  "difficulty": "medium",
+  "tags": [
+    "design",
+    "hash-map",
+    "caching",
+    "linked-list"
+  ],
+  "summary": "Build a fixed-capacity least-recently-used cache with O(1) operations.",
+  "starterCode": "class LRUCache:\n    def __init__(self, capacity: int):\n        pass\n\n    def get(self, key: str):\n        pass\n\n    def put(self, key: str, value) -> None:\n        pass\n",
+  "estimatedMinutes": 25,
+  "companies": [
+    "Meta",
+    "Amazon"
+  ],
+  "topics": [
+    "caching"
+  ],
+  "stages": [
+    {
+      "id": "lru",
+      "title": "LRU cache",
+      "requirement": "Implement `LRUCache(capacity)` (`capacity >= 1`):\n\n- `get(key)` returns the value, or `None` if absent. A hit makes the key **most recently used**.\n- `put(key, value)` inserts or updates the key and makes it most recently used. If inserting a\n  **new** key would exceed the capacity, first evict the **least recently used** key.\n- `len(cache)` returns the number of stored keys.\n\nValues can be anything, including `None`.\n\n```python\nc = LRUCache(2)\nc.put(\"a\", 1); c.put(\"b\", 2)\nc.get(\"a\")      # -> 1   (\"a\" is now most recent)\nc.put(\"c\", 3)   # evicts \"b\"\nc.get(\"b\")      # -> None\n```\n\nAll operations must be O(1). Tests make 200,000 operations.",
+      "visibleTests": [
+        {
+          "name": "test_example",
+          "code": "def test_example():\n    c = LRUCache(2)\n    c.put(\"a\", 1)\n    c.put(\"b\", 2)\n    assert c.get(\"a\") == 1\n    c.put(\"c\", 3)\n    assert c.get(\"b\") is None\n    assert c.get(\"c\") == 3\n"
+        }
+      ],
+      "hiddenTests": [
+        {
+          "name": "test_update_refreshes_recency",
+          "code": "def test_update_refreshes_recency():\n    c = LRUCache(2)\n    c.put(\"a\", 1)\n    c.put(\"b\", 2)\n    c.put(\"a\", 10)\n    c.put(\"c\", 3)\n    assert c.get(\"a\") == 10\n    assert c.get(\"b\") is None\n"
+        },
+        {
+          "name": "test_update_does_not_evict",
+          "code": "def test_update_does_not_evict():\n    c = LRUCache(1)\n    c.put(\"a\", 1)\n    c.put(\"a\", 2)\n    assert c.get(\"a\") == 2\n    assert len(c) == 1\n"
+        },
+        {
+          "name": "test_miss_does_not_change_order",
+          "code": "def test_miss_does_not_change_order():\n    c = LRUCache(2)\n    c.put(\"a\", 1)\n    c.put(\"b\", 2)\n    assert c.get(\"zzz\") is None\n    c.put(\"c\", 3)\n    assert c.get(\"a\") is None\n"
+        },
+        {
+          "name": "test_len",
+          "code": "def test_len():\n    c = LRUCache(3)\n    for k in \"abcde\":\n        c.put(k, k)\n    assert len(c) == 3\n"
+        },
+        {
+          "name": "test_many_operations",
+          "code": "def test_many_operations():\n    c = LRUCache(1000)\n    for i in range(100_000):\n        c.put(i, i)\n        c.get(i - 500)\n    assert len(c) == 1000\n    assert c.get(99_999) == 99_999\n    assert c.get(98_000) is None\n"
+        }
+      ],
+      "hints": [
+        "You need O(1) lookup by key and O(1) \"move to most recent\" / \"remove least recent\".",
+        "A hash map plus a doubly linked list does both. In Python, `collections.OrderedDict` is exactly that: `move_to_end` and `popitem(last=False)`.",
+        "Interviewers often ask for the linked list by hand. Use sentinel head and tail nodes to avoid edge cases."
+      ],
+      "solution": {
+        "code": "from collections import OrderedDict\n\n\nclass LRUCache:\n    def __init__(self, capacity: int):\n        self.capacity = capacity\n        self.data: OrderedDict = OrderedDict()\n\n    def get(self, key):\n        if key not in self.data:\n            return None\n        self.data.move_to_end(key)\n        return self.data[key]\n\n    def put(self, key, value) -> None:\n        if key in self.data:\n            self.data.move_to_end(key)\n        elif len(self.data) >= self.capacity:\n            self.data.popitem(last=False)\n        self.data[key] = value\n\n    def __len__(self) -> int:\n        return len(self.data)\n",
+        "explanation": "`OrderedDict` is a hash map threaded with a doubly linked list. `move_to_end` marks a key\nas most recent and `popitem(last=False)` evicts the least recent, both in O(1). Note\nthat updating an existing key must not evict. In an interview, be ready to write the\nnode-based version with sentinel nodes, which is what `OrderedDict` does internally.",
+        "timeComplexity": "O(1) per operation",
+        "spaceComplexity": "O(capacity)"
+      }
+    }
+  ]
+}

@@ -1,0 +1,72 @@
+{
+  "schemaVersion": 1,
+  "id": "dedupe-events",
+  "title": "Deduplicate Event Stream",
+  "type": "standard",
+  "difficulty": "easy",
+  "tags": [
+    "deduplication",
+    "hash-map",
+    "data-processing"
+  ],
+  "summary": "Collapse at-least-once delivered events into one record per event id, keeping the latest version.",
+  "starterCode": "def dedupe(events: list[dict]) -> list[dict]:\n    \"\"\"Keep the latest version of each event id, ordered by first appearance.\"\"\"\n    raise NotImplementedError\n",
+  "estimatedMinutes": 15,
+  "companies": [
+    "Segment"
+  ],
+  "topics": [
+    "streaming"
+  ],
+  "stages": [
+    {
+      "id": "dedupe",
+      "title": "Latest version wins",
+      "requirement": "Our queue delivers events **at least once**, so the same event can arrive several times with\nupdated payloads. Each event is a dict with `\"id\"` (str), `\"version\"` (int) and other fields.\n\nWrite `dedupe(events)` returning one event per `id`:\n\n- Keep the event with the **highest `version`**. If versions tie, keep the one that arrived\n  **last**.\n- Order the output by when each `id` was **first** seen.\n- Return the original dict objects, and don't mutate the input.\n\n```python\ndedupe([\n    {\"id\": \"a\", \"version\": 1, \"v\": \"x\"},\n    {\"id\": \"b\", \"version\": 1, \"v\": \"y\"},\n    {\"id\": \"a\", \"version\": 2, \"v\": \"z\"},\n])\n# -> [{\"id\": \"a\", \"version\": 2, \"v\": \"z\"}, {\"id\": \"b\", \"version\": 1, \"v\": \"y\"}]\n```",
+      "visibleTests": [
+        {
+          "name": "test_example",
+          "code": "def test_example():\n    events = [\n        {\"id\": \"a\", \"version\": 1, \"v\": \"x\"},\n        {\"id\": \"b\", \"version\": 1, \"v\": \"y\"},\n        {\"id\": \"a\", \"version\": 2, \"v\": \"z\"},\n    ]\n    assert dedupe(events) == [{\"id\": \"a\", \"version\": 2, \"v\": \"z\"}, {\"id\": \"b\", \"version\": 1, \"v\": \"y\"}]\n"
+        },
+        {
+          "name": "test_empty",
+          "code": "def test_empty():\n    assert dedupe([]) == []\n"
+        }
+      ],
+      "hiddenTests": [
+        {
+          "name": "test_older_version_arrives_late",
+          "description": "Out-of-order delivery must not overwrite a newer version.",
+          "code": "def test_older_version_arrives_late():\n    events = [{\"id\": \"a\", \"version\": 3, \"v\": 1}, {\"id\": \"a\", \"version\": 2, \"v\": 2}]\n    assert dedupe(events) == [{\"id\": \"a\", \"version\": 3, \"v\": 1}]\n"
+        },
+        {
+          "name": "test_tie_keeps_last_arrival",
+          "code": "def test_tie_keeps_last_arrival():\n    events = [{\"id\": \"a\", \"version\": 1, \"v\": \"first\"}, {\"id\": \"a\", \"version\": 1, \"v\": \"second\"}]\n    assert dedupe(events)[0][\"v\"] == \"second\"\n"
+        },
+        {
+          "name": "test_order_of_first_appearance",
+          "code": "def test_order_of_first_appearance():\n    events = [{\"id\": \"c\", \"version\": 1}, {\"id\": \"a\", \"version\": 1}, {\"id\": \"c\", \"version\": 5}, {\"id\": \"b\", \"version\": 1}]\n    assert [e[\"id\"] for e in dedupe(events)] == [\"c\", \"a\", \"b\"]\n"
+        },
+        {
+          "name": "test_returns_original_objects_without_mutation",
+          "code": "def test_returns_original_objects_without_mutation():\n    e1 = {\"id\": \"a\", \"version\": 1}\n    e2 = {\"id\": \"a\", \"version\": 2}\n    events = [e1, e2]\n    result = dedupe(events)\n    assert result[0] is e2\n    assert events == [e1, e2]\n"
+        },
+        {
+          "name": "test_large_stream",
+          "code": "def test_large_stream():\n    events = [{\"id\": f\"e{i % 1000}\", \"version\": i} for i in range(100_000)]\n    result = dedupe(events)\n    assert len(result) == 1000\n    assert result[0] == {\"id\": \"e0\", \"version\": 99_000}\n"
+        }
+      ],
+      "hints": [
+        "You need two things per id: the best event so far, and when the id first appeared.",
+        "A dict preserves insertion order, so inserting each id once (on first sight) and then replacing its value keeps the right order.",
+        "Replace the stored event when the new version is `>=` the stored one. `>=` makes the last arrival win ties."
+      ],
+      "solution": {
+        "code": "def dedupe(events: list[dict]) -> list[dict]:\n    best: dict[str, dict] = {}\n    for event in events:\n        current = best.get(event[\"id\"])\n        if current is None or event[\"version\"] >= current[\"version\"]:\n            best[event[\"id\"]] = event\n    return list(best.values())\n",
+        "explanation": "Python dicts keep keys in insertion order, and reassigning an existing key keeps its\nposition. So one dict gives both \"first appearance order\" and \"best version per id\". The\n`>=` comparison means later arrivals win ties. Returning the stored references (no copies)\nsatisfies the identity requirement and leaves the input untouched.",
+        "timeComplexity": "O(n)",
+        "spaceComplexity": "O(k) for k distinct ids"
+      }
+    }
+  ]
+}
