@@ -29,4 +29,4 @@ pre-push:
     - name: problem-validate
       glob: '{problems,schema,harness}/**'
       files: git diff --name-only @{push} HEAD 2>/dev/null || git diff --name-only HEAD~1 HEAD
-      run: npm run problem:validate -- problems
+      run: npm run problem:validate -- problems schema/examples
