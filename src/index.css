@@ -90,3 +90,85 @@
     @apply bg-background text-foreground antialiased;
   }
 }
+
+/* Rendered Markdown (problem statements, hints, explanations, notes). */
+@layer components {
+  .markdown {
+    @apply space-y-3 text-sm leading-relaxed;
+  }
+  .markdown h1 {
+    @apply text-lg font-semibold;
+  }
+  .markdown h2 {
+    @apply text-base font-semibold;
+  }
+  .markdown h3 {
+    @apply text-sm font-semibold;
+  }
+  .markdown ul {
+    @apply list-disc space-y-1 pl-5;
+  }
+  .markdown ol {
+    @apply list-decimal space-y-1 pl-5;
+  }
+  .markdown a {
+    @apply text-primary underline underline-offset-2;
+  }
+  .markdown :not(pre) > code {
+    @apply rounded bg-muted px-1 py-0.5 font-mono text-[0.85em];
+  }
+  .markdown pre {
+    @apply overflow-x-auto rounded-md border bg-muted/50 p-3 font-mono text-xs leading-relaxed;
+  }
+  .markdown blockquote {
+    @apply border-l-2 pl-3 text-muted-foreground;
+  }
+  .markdown table {
+    @apply w-full border-collapse text-xs;
+  }
+  .markdown th,
+  .markdown td {
+    @apply border px-2 py-1 text-left;
+  }
+}
+
+/* highlight.js tokens, themed with the app palette. */
+.hljs-keyword,
+.hljs-built_in,
+.hljs-literal {
+  color: oklch(0.62 0.17 300);
+}
+.hljs-string,
+.hljs-regexp {
+  color: oklch(0.6 0.14 150);
+}
+.hljs-number {
+  color: oklch(0.65 0.15 50);
+}
+.hljs-comment {
+  color: var(--muted-foreground);
+  font-style: italic;
+}
+.hljs-title,
+.hljs-title.function_ {
+  color: oklch(0.62 0.14 240);
+}
+.hljs-meta {
+  color: oklch(0.65 0.12 80);
+}
+.dark .hljs-keyword,
+.dark .hljs-built_in,
+.dark .hljs-literal {
+  color: oklch(0.78 0.13 300);
+}
+.dark .hljs-string,
+.dark .hljs-regexp {
+  color: oklch(0.8 0.12 150);
+}
+.dark .hljs-number {
+  color: oklch(0.8 0.13 60);
+}
+.dark .hljs-title,
+.dark .hljs-title.function_ {
+  color: oklch(0.8 0.11 240);
+}

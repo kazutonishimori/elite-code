@@ -1,0 +1,74 @@
+{
+  "schemaVersion": 1,
+  "id": "merge-meeting-ranges",
+  "title": "Merge Meeting Ranges",
+  "type": "standard",
+  "difficulty": "medium",
+  "tags": ["intervals", "sorting"],
+  "summary": "Collapse a calendar export's overlapping meeting ranges into the minimal set of busy blocks.",
+  "starterCode": "def merge_ranges(ranges: list[tuple[int, int]]) -> list[tuple[int, int]]:\n    \"\"\"Return the merged busy blocks, sorted by start.\"\"\"\n    raise NotImplementedError\n",
+  "estimatedMinutes": 15,
+  "companies": ["Calendly", "Google"],
+  "topics": ["calendars"],
+  "stages": [
+    {
+      "id": "merge-ranges",
+      "title": "Merge overlapping ranges",
+      "requirement": "We export everyone's meetings as `(start, end)` pairs of minutes since midnight, with\n`start < end`. The list is unsorted and can contain duplicates. Write\n`merge_ranges(ranges)` returning the minimal list of busy blocks, sorted by start.\n\nRanges that overlap **or touch** merge: `(60, 90)` and `(90, 120)` become `(60, 120)`.\nReturn tuples, and return `[]` for an empty input. Don't mutate the input list.\n\n```python\nmerge_ranges([(540, 600), (570, 630), (700, 720)])\n# -> [(540, 630), (700, 720)]\n```\n\nUp to 100,000 ranges.",
+      "visibleTests": [
+        {
+          "name": "test_example",
+          "description": "The worked example from the prompt.",
+          "code": "def test_example():\n    assert merge_ranges([(540, 600), (570, 630), (700, 720)]) == [(540, 630), (700, 720)]\n"
+        },
+        {
+          "name": "test_touching_ranges_merge",
+          "code": "def test_touching_ranges_merge():\n    assert merge_ranges([(60, 90), (90, 120)]) == [(60, 120)]\n"
+        },
+        {
+          "name": "test_empty",
+          "code": "def test_empty():\n    assert merge_ranges([]) == []\n"
+        }
+      ],
+      "hiddenTests": [
+        {
+          "name": "test_unsorted_input",
+          "code": "def test_unsorted_input():\n    assert merge_ranges([(700, 720), (10, 20), (15, 30)]) == [(10, 30), (700, 720)]\n"
+        },
+        {
+          "name": "test_contained_range",
+          "description": "A range fully inside another must not shrink the block.",
+          "code": "def test_contained_range():\n    assert merge_ranges([(0, 100), (10, 20), (30, 40)]) == [(0, 100)]\n"
+        },
+        {
+          "name": "test_duplicates",
+          "code": "def test_duplicates():\n    assert merge_ranges([(5, 9), (5, 9), (5, 9)]) == [(5, 9)]\n"
+        },
+        {
+          "name": "test_does_not_mutate_input",
+          "code": "def test_does_not_mutate_input():\n    ranges = [(30, 40), (10, 20)]\n    merge_ranges(ranges)\n    assert ranges == [(30, 40), (10, 20)]\n"
+        },
+        {
+          "name": "test_returns_tuples",
+          "code": "def test_returns_tuples():\n    assert all(isinstance(r, tuple) for r in merge_ranges([(1, 2), (5, 6)]))\n"
+        },
+        {
+          "name": "test_large_input",
+          "description": "100k disjoint ranges in reverse order: needs O(n log n).",
+          "code": "def test_large_input():\n    ranges = [(i * 3, i * 3 + 2) for i in range(100_000)][::-1]\n    merged = merge_ranges(ranges)\n    assert len(merged) == 100_000\n    assert merged[0] == (0, 2)\n"
+        }
+      ],
+      "hints": [
+        "If the ranges were sorted by start, which ranges could possibly overlap the one you are looking at?",
+        "Sort by start, then sweep once, keeping the current block. Either extend it or start a new one.",
+        "A range extends the current block when `start <= current_end`. The new end is `max(current_end, end)`, not just `end`."
+      ],
+      "solution": {
+        "code": "def merge_ranges(ranges: list[tuple[int, int]]) -> list[tuple[int, int]]:\n    merged: list[tuple[int, int]] = []\n    for start, end in sorted(ranges):\n        if merged and start <= merged[-1][1]:\n            merged[-1] = (merged[-1][0], max(merged[-1][1], end))\n        else:\n            merged.append((start, end))\n    return merged\n",
+        "explanation": "Sort by start (`sorted` copies, so the input is untouched). After sorting, a range can\nonly overlap the block currently being built. So one sweep is enough: if the next range\nstarts at or before the block's end, extend the block with `max` (the next range might\nsit entirely inside it). Otherwise close the block and start a new one.",
+        "timeComplexity": "O(n log n) for n ranges (the sort dominates)",
+        "spaceComplexity": "O(n) for the sorted copy and output"
+      }
+    }
+  ]
+}

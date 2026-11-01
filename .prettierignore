@@ -11,3 +11,5 @@ src/types/problem.generated.ts
 problems/*.json
 schema/fixtures
 schema/examples
+src/lib/monacoSlim.ts
+.claude

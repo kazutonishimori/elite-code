@@ -15,7 +15,8 @@
     "e2e",
     "src/core",
     "src/runner",
-    "src/types"
+    "src/types",
+    "src/storage/types.ts"
   ],
-  "exclude": ["**/*.test.ts", "src/runner/worker/pyodide.worker.ts"]
+  "exclude": ["**/*.test.ts", "src/runner/worker/pyodide.worker.ts", "src/runner/browserRunner.ts"]
 }

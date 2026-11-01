@@ -4,7 +4,7 @@
  */
 import type { Worker } from 'node:worker_threads';
 
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
 import { bundleWorker, nodeWorkerFactory } from './nodeWorker';
 import { harnessSource, pyodideIndexURL } from '../../scripts/lib/nodePyodide';
@@ -74,7 +74,8 @@ describe('PyodideRunner (real Pyodide, real workers)', () => {
       simple('def spin():\n    while True:\n        pass\n', 'spin()', 1500),
     );
     expect(outcome).toEqual({ kind: 'timeout', timeoutMs: 1500 });
-    expect(workers.length).toBeGreaterThan(before); // a replacement spare was started
+    // The timed-out worker is replaced (the spare is promoted and a new spare starts).
+    await vi.waitFor(() => expect(workers.length).toBeGreaterThan(before), { timeout: 30_000 });
 
     const next = completed(await runner.run(simple('def f():\n    return 7\n', 'assert f() == 7')));
     expect(next.summary.passed).toBe(1);

@@ -17,8 +17,10 @@ export default mergeConfig(
           'src/components/ui/**',
           // Thin browser-only glue: exercised by the Playwright suite instead.
           'src/runner/worker/pyodide.worker.ts',
-          'src/runner/browserWorkerFactory.ts',
+          'src/runner/browserRunner.ts',
           'src/lib/monaco.ts',
+          'src/lib/monacoSlim.ts',
+          'src/components/editor/MonacoEditors.tsx',
           // Spawns real processes: covered by tests/integration instead.
           'scripts/lib/cpythonRunner.ts',
         ],

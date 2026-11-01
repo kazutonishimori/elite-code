@@ -3,6 +3,8 @@ import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { format, resolveConfig } from 'prettier';
+
 import { injectExamples } from './lib/guide.ts';
 
 const schemaDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'schema');
@@ -14,7 +16,11 @@ const examples = Object.fromEntries(
   ]),
 );
 const current = readFileSync(guidePath, 'utf8');
-const next = injectExamples(current, examples);
+// Format like the pre-commit hook does, so the check is stable.
+const next = await format(injectExamples(current, examples), {
+  ...(await resolveConfig(guidePath)),
+  filepath: guidePath,
+});
 
 if (process.argv.includes('--check')) {
   if (current !== next) {

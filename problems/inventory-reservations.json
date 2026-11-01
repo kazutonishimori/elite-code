@@ -1,0 +1,186 @@
+{
+  "schemaVersion": 1,
+  "id": "inventory-reservations",
+  "title": "Inventory Reservations",
+  "type": "simulation",
+  "difficulty": "medium",
+  "tags": ["design", "hash-map", "simulation"],
+  "summary": "Build the stock-keeping core of an online store, then grow it as the interviewer adds requirements.",
+  "starterCode": "class Inventory:\n    def __init__(self):\n        pass\n\n    def add(self, sku: str, qty: int) -> None:\n        pass\n\n    def remove(self, sku: str, qty: int) -> bool:\n        pass\n\n    def count(self, sku: str) -> int:\n        pass\n",
+  "estimatedMinutes": 45,
+  "companies": ["Shopify", "Amazon"],
+  "topics": ["e-commerce"],
+  "stages": [
+    {
+      "id": "basic-stock",
+      "title": "Basic stock",
+      "requirement": "Let's start simple. We're building the inventory service for a store. Implement a class\n`Inventory` with:\n\n- `add(sku, qty)`: adds `qty` units of `sku`.\n- `remove(sku, qty) -> bool`: removes `qty` units if at least that many are in stock and\n  returns `True`. Otherwise changes nothing and returns `False`.\n- `count(sku) -> int`: units in stock, `0` for unknown SKUs.\n\n`qty` must be a positive integer; raise `ValueError` otherwise.\n\n```python\ninv = Inventory()\ninv.add(\"mug\", 3)\ninv.remove(\"mug\", 5)  # False\ninv.remove(\"mug\", 2)  # True\ninv.count(\"mug\")      # 1\n```",
+      "visibleTests": [
+        {
+          "name": "test_add_and_count",
+          "code": "def test_add_and_count():\n    inv = Inventory()\n    inv.add(\"mug\", 3)\n    inv.add(\"mug\", 2)\n    assert inv.count(\"mug\") == 5\n"
+        },
+        {
+          "name": "test_remove_insufficient_stock",
+          "code": "def test_remove_insufficient_stock():\n    inv = Inventory()\n    inv.add(\"mug\", 3)\n    assert inv.remove(\"mug\", 5) is False\n    assert inv.count(\"mug\") == 3\n"
+        }
+      ],
+      "hiddenTests": [
+        {
+          "name": "test_unknown_sku_is_zero",
+          "code": "def test_unknown_sku_is_zero():\n    assert Inventory().count(\"nope\") == 0\n"
+        },
+        {
+          "name": "test_remove_exact_amount",
+          "code": "def test_remove_exact_amount():\n    inv = Inventory()\n    inv.add(\"mug\", 2)\n    assert inv.remove(\"mug\", 2) is True\n    assert inv.count(\"mug\") == 0\n"
+        },
+        {
+          "name": "test_invalid_qty_raises",
+          "code": "def test_invalid_qty_raises():\n    inv = Inventory()\n    for bad in (0, -1):\n        try:\n            inv.add(\"mug\", bad)\n        except ValueError:\n            pass\n        else:\n            raise AssertionError(f\"add({bad}) should raise ValueError\")\n"
+        }
+      ],
+      "hints": [
+        "A dictionary from SKU to quantity is all you need for now.",
+        "Check the stock before mutating in `remove`, so a failed removal changes nothing."
+      ],
+      "solution": {
+        "code": "class Inventory:\n    def __init__(self):\n        self._stock: dict[str, int] = {}\n\n    def add(self, sku: str, qty: int) -> None:\n        if qty <= 0:\n            raise ValueError(\"qty must be positive\")\n        self._stock[sku] = self._stock.get(sku, 0) + qty\n\n    def remove(self, sku: str, qty: int) -> bool:\n        if qty <= 0:\n            raise ValueError(\"qty must be positive\")\n        if self._stock.get(sku, 0) < qty:\n            return False\n        self._stock[sku] -= qty\n        return True\n\n    def count(self, sku: str) -> int:\n        return self._stock.get(sku, 0)\n",
+        "explanation": "A `dict[str, int]` maps SKU to units. `remove` checks the stock first so a failed call\nis a no-op. Validating `qty` up front keeps bad data out of the store.",
+        "timeComplexity": "O(1) per operation",
+        "spaceComplexity": "O(k) for k distinct SKUs"
+      }
+    },
+    {
+      "id": "reservations",
+      "title": "Reservations",
+      "requirement": "Nice. Checkout needs to hold stock while the customer pays. Add:\n\n- `reserve(order_id, sku, qty) -> bool`: holds `qty` units for an order. It fails (returns\n  `False`, nothing changes) if fewer than `qty` units are *available* or the `order_id`\n  already has a reservation.\n- `available(sku) -> int`: stock minus units held by reservations.\n- `cancel(order_id) -> bool`: releases a reservation. `False` if there isn't one.\n- `fulfill(order_id) -> bool`: ships it, so the reserved units leave stock. `False` if\n  there isn't one.\n\n`count` still reports physical stock, reserved units included. And `remove` must not take\nreserved units: it can only remove what's available.\n\n```python\ninv = Inventory()\ninv.add(\"mug\", 5)\ninv.reserve(\"o1\", \"mug\", 3)  # True\ninv.available(\"mug\")         # 2\ninv.remove(\"mug\", 3)         # False: only 2 are free\ninv.fulfill(\"o1\")            # True\ninv.count(\"mug\")             # 2\n```",
+      "visibleTests": [
+        {
+          "name": "test_reserve_reduces_available",
+          "code": "def test_reserve_reduces_available():\n    inv = Inventory()\n    inv.add(\"mug\", 5)\n    assert inv.reserve(\"o1\", \"mug\", 3) is True\n    assert inv.available(\"mug\") == 2\n    assert inv.count(\"mug\") == 5\n"
+        },
+        {
+          "name": "test_fulfill_removes_stock",
+          "code": "def test_fulfill_removes_stock():\n    inv = Inventory()\n    inv.add(\"mug\", 5)\n    inv.reserve(\"o1\", \"mug\", 3)\n    assert inv.fulfill(\"o1\") is True\n    assert inv.count(\"mug\") == 2\n    assert inv.available(\"mug\") == 2\n"
+        }
+      ],
+      "hiddenTests": [
+        {
+          "name": "test_remove_cannot_take_reserved_units",
+          "code": "def test_remove_cannot_take_reserved_units():\n    inv = Inventory()\n    inv.add(\"mug\", 5)\n    inv.reserve(\"o1\", \"mug\", 3)\n    assert inv.remove(\"mug\", 3) is False\n    assert inv.remove(\"mug\", 2) is True\n"
+        },
+        {
+          "name": "test_cancel_releases",
+          "code": "def test_cancel_releases():\n    inv = Inventory()\n    inv.add(\"mug\", 1)\n    inv.reserve(\"o1\", \"mug\", 1)\n    assert inv.cancel(\"o1\") is True\n    assert inv.available(\"mug\") == 1\n    assert inv.cancel(\"o1\") is False\n"
+        },
+        {
+          "name": "test_duplicate_order_id_rejected",
+          "code": "def test_duplicate_order_id_rejected():\n    inv = Inventory()\n    inv.add(\"mug\", 10)\n    assert inv.reserve(\"o1\", \"mug\", 1) is True\n    assert inv.reserve(\"o1\", \"mug\", 1) is False\n    assert inv.available(\"mug\") == 9\n"
+        },
+        {
+          "name": "test_fulfill_unknown_order",
+          "code": "def test_fulfill_unknown_order():\n    assert Inventory().fulfill(\"ghost\") is False\n"
+        }
+      ],
+      "hints": [
+        "Physical stock and held stock are now different numbers. Which methods should use which?",
+        "Keep reservations in their own map from `order_id` to `(sku, qty)`. Then `available` is stock minus the sum of holds for that SKU.",
+        "`remove` needs to check `available`, not `count`. That's the backward-compatible refactor in this stage."
+      ],
+      "solution": {
+        "code": "class Inventory:\n    def __init__(self):\n        self._stock: dict[str, int] = {}\n        self._reservations: dict[str, tuple[str, int]] = {}  # order_id -> (sku, qty)\n\n    def _reserved(self, sku: str) -> int:\n        return sum(q for s, q in self._reservations.values() if s == sku)\n\n    def add(self, sku: str, qty: int) -> None:\n        if qty <= 0:\n            raise ValueError(\"qty must be positive\")\n        self._stock[sku] = self._stock.get(sku, 0) + qty\n\n    def available(self, sku: str) -> int:\n        return self._stock.get(sku, 0) - self._reserved(sku)\n\n    def remove(self, sku: str, qty: int) -> bool:\n        if qty <= 0:\n            raise ValueError(\"qty must be positive\")\n        if self.available(sku) < qty:\n            return False\n        self._stock[sku] -= qty\n        return True\n\n    def count(self, sku: str) -> int:\n        return self._stock.get(sku, 0)\n\n    def reserve(self, order_id: str, sku: str, qty: int) -> bool:\n        if qty <= 0:\n            raise ValueError(\"qty must be positive\")\n        if order_id in self._reservations or self.available(sku) < qty:\n            return False\n        self._reservations[order_id] = (sku, qty)\n        return True\n\n    def cancel(self, order_id: str) -> bool:\n        return self._reservations.pop(order_id, None) is not None\n\n    def fulfill(self, order_id: str) -> bool:\n        res = self._reservations.pop(order_id, None)\n        if res is None:\n            return False\n        sku, qty = res\n        self._stock[sku] -= qty\n        return True\n",
+        "explanation": "Reservations get their own map, `order_id -> (sku, qty)`, separate from physical stock.\n`available` derives the free units, and `remove` and `reserve` now check it instead of\nraw stock. `fulfill` turns a hold into a stock decrement. `count` is unchanged, so the\nstage 1 tests keep passing.",
+        "timeComplexity": "O(r) for available/reserve with r active reservations; O(1) otherwise",
+        "spaceComplexity": "O(k + r)"
+      }
+    },
+    {
+      "id": "expiring-holds",
+      "title": "Expiring holds",
+      "requirement": "Customers abandon carts, and holds lock up stock forever. The constructor now takes an\noptional `reservation_ttl` (seconds). Every method that can be affected now accepts an\noptional keyword `now: int = 0`, the current time in seconds.\n\nA reservation made at time `t` expires at `t + reservation_ttl`: from that instant on it\nno longer counts against `available` and can't be cancelled or fulfilled.\n`Inventory()` with no TTL behaves exactly as before.\n\n```python\ninv = Inventory(reservation_ttl=60)\ninv.add(\"mug\", 1)\ninv.reserve(\"o1\", \"mug\", 1, now=0)\ninv.available(\"mug\", now=59)  # 0\ninv.available(\"mug\", now=60)  # 1\ninv.fulfill(\"o1\", now=61)     # False\n```",
+      "visibleTests": [
+        {
+          "name": "test_hold_expires_at_ttl",
+          "code": "def test_hold_expires_at_ttl():\n    inv = Inventory(reservation_ttl=60)\n    inv.add(\"mug\", 1)\n    assert inv.reserve(\"o1\", \"mug\", 1, now=0)\n    assert inv.available(\"mug\", now=59) == 0\n    assert inv.available(\"mug\", now=60) == 1\n"
+        },
+        {
+          "name": "test_cannot_fulfill_expired",
+          "code": "def test_cannot_fulfill_expired():\n    inv = Inventory(reservation_ttl=60)\n    inv.add(\"mug\", 1)\n    inv.reserve(\"o1\", \"mug\", 1, now=0)\n    assert inv.fulfill(\"o1\", now=61) is False\n    assert inv.count(\"mug\") == 1\n"
+        }
+      ],
+      "hiddenTests": [
+        {
+          "name": "test_no_ttl_never_expires",
+          "code": "def test_no_ttl_never_expires():\n    inv = Inventory()\n    inv.add(\"mug\", 1)\n    inv.reserve(\"o1\", \"mug\", 1, now=0)\n    assert inv.available(\"mug\", now=10**9) == 0\n"
+        },
+        {
+          "name": "test_expired_order_id_can_be_reused",
+          "code": "def test_expired_order_id_can_be_reused():\n    inv = Inventory(reservation_ttl=10)\n    inv.add(\"mug\", 2)\n    inv.reserve(\"o1\", \"mug\", 1, now=0)\n    assert inv.reserve(\"o1\", \"mug\", 2, now=10) is True\n"
+        },
+        {
+          "name": "test_expiry_frees_stock_for_remove",
+          "code": "def test_expiry_frees_stock_for_remove():\n    inv = Inventory(reservation_ttl=5)\n    inv.add(\"mug\", 3)\n    inv.reserve(\"o1\", \"mug\", 3, now=0)\n    assert inv.remove(\"mug\", 1, now=4) is False\n    assert inv.remove(\"mug\", 3, now=5) is True\n"
+        }
+      ],
+      "hints": [
+        "A reservation now needs to remember when it was made.",
+        "Before any method reads reservations, drop the ones that have expired at `now`. A small `_expire(now)` helper keeps that in one place.",
+        "Default `now` to 0 and the TTL to `None` (never expire) so the earlier stages' calls keep working."
+      ],
+      "solution": {
+        "code": "class Inventory:\n    def __init__(self, reservation_ttl: int | None = None):\n        self._ttl = reservation_ttl\n        self._stock: dict[str, int] = {}\n        # order_id -> (sku, qty, created_at)\n        self._reservations: dict[str, tuple[str, int, int]] = {}\n\n    def _expire(self, now: int) -> None:\n        if self._ttl is None:\n            return\n        expired = [o for o, (_, _, t) in self._reservations.items() if now >= t + self._ttl]\n        for order_id in expired:\n            del self._reservations[order_id]\n\n    def _reserved(self, sku: str) -> int:\n        return sum(q for s, q, _ in self._reservations.values() if s == sku)\n\n    def add(self, sku: str, qty: int, now: int = 0) -> None:\n        if qty <= 0:\n            raise ValueError(\"qty must be positive\")\n        self._stock[sku] = self._stock.get(sku, 0) + qty\n\n    def available(self, sku: str, now: int = 0) -> int:\n        self._expire(now)\n        return self._stock.get(sku, 0) - self._reserved(sku)\n\n    def remove(self, sku: str, qty: int, now: int = 0) -> bool:\n        if qty <= 0:\n            raise ValueError(\"qty must be positive\")\n        if self.available(sku, now) < qty:\n            return False\n        self._stock[sku] -= qty\n        return True\n\n    def count(self, sku: str) -> int:\n        return self._stock.get(sku, 0)\n\n    def reserve(self, order_id: str, sku: str, qty: int, now: int = 0) -> bool:\n        if qty <= 0:\n            raise ValueError(\"qty must be positive\")\n        self._expire(now)\n        if order_id in self._reservations or self.available(sku, now) < qty:\n            return False\n        self._reservations[order_id] = (sku, qty, now)\n        return True\n\n    def cancel(self, order_id: str, now: int = 0) -> bool:\n        self._expire(now)\n        return self._reservations.pop(order_id, None) is not None\n\n    def fulfill(self, order_id: str, now: int = 0) -> bool:\n        self._expire(now)\n        res = self._reservations.pop(order_id, None)\n        if res is None:\n            return False\n        sku, qty, _ = res\n        self._stock[sku] -= qty\n        return True\n",
+        "explanation": "Each reservation now also stores its creation time. A private `_expire(now)` helper\npurges expired holds and runs at the start of every method that reads reservations,\nso expiry is applied lazily and consistently. Using keyword defaults (`now=0`, TTL\n`None`) keeps the stage 1 and 2 call sites valid. That backward compatibility is the\npoint of this stage.",
+        "timeComplexity": "O(r) per operation for r active reservations",
+        "spaceComplexity": "O(k + r)"
+      }
+    },
+    {
+      "id": "atomic-batches",
+      "title": "Atomic batches",
+      "requirement": "Last one. The warehouse sends batches of operations that must apply **all or nothing**.\nAdd `apply(ops, now=0) -> bool`, where each op is a tuple of a method name followed by\nits positional arguments:\n\n```python\ninv.apply([\n    (\"add\", \"mug\", 5),\n    (\"reserve\", \"o1\", \"mug\", 2),\n    (\"fulfill\", \"o1\"),\n])  # True\n```\n\nIf any op fails (returns `False`, raises `ValueError`, or names an unknown operation),\n`apply` returns `False` and the inventory must look exactly as it did before the call.\nOps apply in order, so later ops see the effects of earlier ones.",
+      "visibleTests": [
+        {
+          "name": "test_successful_batch",
+          "code": "def test_successful_batch():\n    inv = Inventory()\n    assert inv.apply([(\"add\", \"mug\", 5), (\"reserve\", \"o1\", \"mug\", 2), (\"fulfill\", \"o1\")]) is True\n    assert inv.count(\"mug\") == 3\n"
+        },
+        {
+          "name": "test_failed_batch_rolls_back",
+          "code": "def test_failed_batch_rolls_back():\n    inv = Inventory()\n    inv.add(\"mug\", 1)\n    assert inv.apply([(\"add\", \"mug\", 5), (\"remove\", \"mug\", 100)]) is False\n    assert inv.count(\"mug\") == 1\n"
+        }
+      ],
+      "hiddenTests": [
+        {
+          "name": "test_rollback_restores_reservations",
+          "code": "def test_rollback_restores_reservations():\n    inv = Inventory()\n    inv.add(\"mug\", 5)\n    inv.reserve(\"keep\", \"mug\", 1)\n    assert inv.apply([(\"cancel\", \"keep\"), (\"reserve\", \"o2\", \"mug\", 99)]) is False\n    assert inv.available(\"mug\") == 4\n    assert inv.cancel(\"keep\") is True\n"
+        },
+        {
+          "name": "test_unknown_op_fails",
+          "code": "def test_unknown_op_fails():\n    inv = Inventory()\n    assert inv.apply([(\"add\", \"mug\", 1), (\"teleport\", \"mug\")]) is False\n    assert inv.count(\"mug\") == 0\n"
+        },
+        {
+          "name": "test_invalid_qty_in_batch_fails",
+          "code": "def test_invalid_qty_in_batch_fails():\n    inv = Inventory()\n    assert inv.apply([(\"add\", \"mug\", 2), (\"add\", \"cup\", 0)]) is False\n    assert inv.count(\"mug\") == 0\n"
+        },
+        {
+          "name": "test_empty_batch_succeeds",
+          "code": "def test_empty_batch_succeeds():\n    assert Inventory().apply([]) is True\n"
+        },
+        {
+          "name": "test_batch_respects_ttl",
+          "code": "def test_batch_respects_ttl():\n    inv = Inventory(reservation_ttl=10)\n    inv.add(\"mug\", 1)\n    inv.reserve(\"o1\", \"mug\", 1, now=0)\n    assert inv.apply([(\"fulfill\", \"o1\")], now=10) is False\n    assert inv.count(\"mug\") == 1\n"
+        }
+      ],
+      "hints": [
+        "The simplest correct rollback is to restore a snapshot of all state taken before the batch.",
+        "Copy both the stock map and the reservations map, run the ops in order, and put the copies back if anything fails.",
+        "Treat an exception (unknown op, bad quantity) the same as an op returning `False`."
+      ],
+      "solution": {
+        "code": "class Inventory:\n    def __init__(self, reservation_ttl: int | None = None):\n        self._ttl = reservation_ttl\n        self._stock: dict[str, int] = {}\n        # order_id -> (sku, qty, created_at)\n        self._reservations: dict[str, tuple[str, int, int]] = {}\n\n    def _expire(self, now: int) -> None:\n        if self._ttl is None:\n            return\n        expired = [o for o, (_, _, t) in self._reservations.items() if now >= t + self._ttl]\n        for order_id in expired:\n            del self._reservations[order_id]\n\n    def _reserved(self, sku: str) -> int:\n        return sum(q for s, q, _ in self._reservations.values() if s == sku)\n\n    def add(self, sku: str, qty: int, now: int = 0) -> None:\n        if qty <= 0:\n            raise ValueError(\"qty must be positive\")\n        self._stock[sku] = self._stock.get(sku, 0) + qty\n\n    def available(self, sku: str, now: int = 0) -> int:\n        self._expire(now)\n        return self._stock.get(sku, 0) - self._reserved(sku)\n\n    def remove(self, sku: str, qty: int, now: int = 0) -> bool:\n        if qty <= 0:\n            raise ValueError(\"qty must be positive\")\n        if self.available(sku, now) < qty:\n            return False\n        self._stock[sku] -= qty\n        return True\n\n    def count(self, sku: str) -> int:\n        return self._stock.get(sku, 0)\n\n    def reserve(self, order_id: str, sku: str, qty: int, now: int = 0) -> bool:\n        if qty <= 0:\n            raise ValueError(\"qty must be positive\")\n        self._expire(now)\n        if order_id in self._reservations or self.available(sku, now) < qty:\n            return False\n        self._reservations[order_id] = (sku, qty, now)\n        return True\n\n    def cancel(self, order_id: str, now: int = 0) -> bool:\n        self._expire(now)\n        return self._reservations.pop(order_id, None) is not None\n\n    def apply(self, ops: list[tuple], now: int = 0) -> bool:\n        \"\"\"Apply ops atomically: all succeed, or the inventory is left unchanged.\"\"\"\n        handlers = {\n            \"add\": lambda a: self.add(*a, now=now) is None,\n            \"remove\": lambda a: self.remove(*a, now=now),\n            \"reserve\": lambda a: self.reserve(*a, now=now),\n            \"cancel\": lambda a: self.cancel(*a, now=now),\n            \"fulfill\": lambda a: self.fulfill(*a, now=now),\n        }\n        self._expire(now)\n        snapshot = (dict(self._stock), dict(self._reservations))\n        try:\n            ok = all(handlers[op[0]](op[1:]) for op in ops)\n        except (KeyError, ValueError, TypeError):\n            ok = False\n        if not ok:\n            self._stock, self._reservations = snapshot\n        return ok\n\n    def fulfill(self, order_id: str, now: int = 0) -> bool:\n        self._expire(now)\n        res = self._reservations.pop(order_id, None)\n        if res is None:\n            return False\n        sku, qty, _ = res\n        self._stock[sku] -= qty\n        return True\n",
+        "explanation": "`apply` snapshots both maps, runs each op through a dispatch table, and restores the\nsnapshot on the first failure or exception. Shallow copies are enough because the\nvalues are immutable ints and tuples. In an interview, mention the trade-off: snapshots\ncost O(state) per batch. An undo log of inverse operations would cost O(batch) instead,\nbut it's more code and easier to get wrong.",
+        "timeComplexity": "O(k + r + b) per batch of b ops (the snapshot copies all state)",
+        "spaceComplexity": "O(k + r) for the snapshot"
+      }
+    }
+  ]
+}
