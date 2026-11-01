@@ -35,8 +35,8 @@ test('hints are progressive and the solution stays locked until revealed', async
   await openProblem(page, 'lru-cache');
   await page.getByRole('tab', { name: 'Hints 0/3' }).click();
   await page.getByRole('button', { name: 'Reveal hint 1 of 3' }).click();
-  await expect(page.getByText('Hint 1')).toBeVisible();
-  await expect(page.getByText('Hint 2')).toHaveCount(0);
+  await expect(page.getByText('Hint 1', { exact: true })).toBeVisible();
+  await expect(page.getByText('Hint 2', { exact: true })).toHaveCount(0);
   await expect(page.getByRole('tab', { name: 'Hints 1/3' })).toBeVisible();
 
   await page.getByRole('tab', { name: 'Solution' }).click();
