@@ -19,6 +19,8 @@ export default mergeConfig(
           'src/runner/worker/pyodide.worker.ts',
           'src/runner/browserWorkerFactory.ts',
           'src/lib/monaco.ts',
+          // Spawns real processes: covered by tests/integration instead.
+          'scripts/lib/cpythonRunner.ts',
         ],
         reporter: ['text-summary', 'html', 'json-summary'],
         thresholds: {
