@@ -467,15 +467,26 @@ describe('timer', () => {
         (await storage.timers.get(['merge-meeting-ranges', 'merge-ranges']))?.accumulatedMs,
       ).toBe(HEARTBEAT_MS * 2),
     );
-    window.dispatchEvent(new Event('pagehide'));
+    await tick(3_000); // not yet flushed by a heartbeat...
+    // An unloading page drops async IndexedDB writes: simulate that, so only the journal survives.
+    const put = storage.timers.put.bind(storage.timers);
+    storage.timers.put = () => Promise.resolve();
+    window.dispatchEvent(new Event('pagehide')); // ...but journaled synchronously on unload
     first.unmount();
+    storage.timers.put = put;
 
     clock += 3_600_000; // the tab was closed for an hour
     await openProblem('merge-meeting-ranges', { storage });
-    expect(timerValue()).toHaveTextContent('00:10');
+    expect(timerValue()).toHaveTextContent('00:13');
+    await waitFor(async () =>
+      expect(
+        (await storage.timers.get(['merge-meeting-ranges', 'merge-ranges']))?.accumulatedMs,
+      ).toBe(13_000),
+    );
+    expect(localStorage.length).toBe(0);
     expect(screen.getByRole('button', { name: 'Pause timer' })).toBeInTheDocument();
     await tick(1_000);
-    expect(timerValue()).toHaveTextContent('00:11');
+    expect(timerValue()).toHaveTextContent('00:14');
   });
 
   it('stops a stage timer when the stage passes and starts the next stage', async () => {

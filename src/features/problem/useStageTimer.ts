@@ -19,6 +19,12 @@ import {
   toTimerRecord,
   type TimerState,
 } from '@/core/timer';
+import {
+  clearTimerJournal,
+  newerTimerRecord,
+  peekTimerJournal,
+  writeTimerJournal,
+} from '@/storage/unloadJournal';
 import { timerKey } from '@/store/appStore';
 import { useAppStore } from '@/store/useAppStore';
 
@@ -42,8 +48,13 @@ export function useStageTimer(problemId: string, stageId: string): StageTimer {
   const { store, now } = useServices();
   const autoPause = useAppStore((s) => s.settings.autoPauseOnHidden);
   const key = timerKey(problemId, stageId);
+  // The newer of the IndexedDB record and an unload journal entry wins (see unloadJournal.ts).
   const restore = (k: string) =>
-    fromTimerRecord(store.getState().timers[k], now(), document.hidden);
+    fromTimerRecord(
+      newerTimerRecord(store.getState().timers[k], peekTimerJournal(problemId, stageId)),
+      now(),
+      document.hidden,
+    );
 
   const [entry, setEntry] = useState<Entry>(() => ({ key, timer: restore(key) }));
   // Switching stage resets the state during render (React's pattern for state keyed by a prop).
@@ -84,6 +95,12 @@ export function useStageTimer(problemId: string, stageId: string): StageTimer {
   // Leaving this stage (stage passed or page left): stop its clock and flush.
   useEffect(() => {
     const ids = { problemId, stageId };
+    // A journal entry left by the last unload has been folded into the restored state:
+    // write it back to IndexedDB and drop the entry.
+    if (peekTimerJournal(problemId, stageId)) {
+      persist(latest.current.timer, ids);
+      clearTimerJournal(problemId, stageId);
+    }
     return () => {
       const { timer } = latest.current;
       if (hasStarted(timer) && !unloading.current) persist(pauseTimer(timer, now()), ids);
@@ -111,7 +128,11 @@ export function useStageTimer(problemId: string, stageId: string): StageTimer {
     // A reload or closed tab: keep the running flag so the timer resumes on the next visit.
     const onPageHide = () => {
       unloading.current = true;
-      if (hasStarted(latest.current.timer)) persist(latest.current.timer, { problemId, stageId });
+      const { timer } = latest.current;
+      if (!hasStarted(timer)) return;
+      // The async IndexedDB write may not land before unload; the journal write is synchronous.
+      writeTimerJournal(toTimerRecord(timer, problemId, stageId, now()));
+      persist(timer, { problemId, stageId });
     };
     document.addEventListener('visibilitychange', onVisibility);
     window.addEventListener('pagehide', onPageHide);
