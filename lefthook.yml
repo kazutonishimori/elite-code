@@ -1,0 +1,32 @@
+# Local quality gates. Install with `npx lefthook install` (done automatically by `npm install`).
+pre-commit:
+  parallel: true
+  jobs:
+    - name: prettier
+      glob: '*.{ts,tsx,js,mjs,json,md,css,html,yml,yaml}'
+      run: npx prettier --check {staged_files}
+    - name: eslint
+      glob: '*.{ts,tsx,js,mjs}'
+      run: npx eslint --max-warnings=0 {staged_files}
+    - name: ruff
+      glob: '*.py'
+      run: uv run ruff check {staged_files} && uv run ruff format --check {staged_files}
+    - name: typecheck
+      glob: '*.{ts,tsx}'
+      run: npm run typecheck
+
+commit-msg:
+  jobs:
+    - name: commitlint
+      run: npx commitlint --edit {1}
+
+pre-push:
+  jobs:
+    - name: unit-and-component-tests
+      run: npm test
+    - name: pytest
+      run: uv run pytest -q
+    - name: problem-validate
+      glob: '{problems,schema,harness}/**'
+      files: git diff --name-only @{push} HEAD 2>/dev/null || git diff --name-only HEAD~1 HEAD
+      run: npm run problem:validate -- problems

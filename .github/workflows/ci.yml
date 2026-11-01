@@ -1,0 +1,133 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  LEFTHOOK: '0'
+  NODE_VERSION: '24'
+
+jobs:
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '${{ env.NODE_VERSION }}', cache: npm }
+      - uses: astral-sh/setup-uv@v6
+      - run: npm ci
+      - run: uv sync --frozen
+      - run: npm run lint
+      - name: Generated types match the schema
+        run: npm run schema:types:check
+
+  typecheck:
+    name: typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '${{ env.NODE_VERSION }}', cache: npm }
+      - run: npm ci
+      - run: npm run typecheck
+
+  test:
+    name: unit + component tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '${{ env.NODE_VERSION }}', cache: npm }
+      - uses: astral-sh/setup-uv@v6
+      - run: npm ci
+      - run: uv sync --frozen
+      - name: Restore Pyodide assets
+        uses: actions/cache@v4
+        with:
+          path: public/pyodide
+          key: pyodide-${{ hashFiles('package-lock.json', 'schema/problem.schema.json') }}
+      - run: npm run pyodide:assets
+      - name: Unit + component tests with coverage thresholds
+        run: npm run test:coverage
+      - name: Runner integration tests (real Pyodide)
+        run: npm run test:integration
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: coverage, path: coverage, retention-days: 7 }
+
+  pytest:
+    name: pytest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '${{ env.NODE_VERSION }}', cache: npm }
+      - uses: astral-sh/setup-uv@v6
+      - run: npm ci
+      - run: uv sync --frozen
+      - name: Restore Pyodide assets
+        uses: actions/cache@v4
+        with:
+          path: public/pyodide
+          key: pyodide-${{ hashFiles('package-lock.json', 'schema/problem.schema.json') }}
+      - run: npm run pyodide:assets
+      - run: uv run pytest
+
+  problems:
+    name: problem validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '${{ env.NODE_VERSION }}', cache: npm }
+      - uses: astral-sh/setup-uv@v6
+      - run: npm ci
+      - run: uv sync --frozen
+      - run: npm run problem:validate -- problems schema/examples
+
+  e2e:
+    name: e2e
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '${{ env.NODE_VERSION }}', cache: npm }
+      - run: npm ci
+      - name: Restore Pyodide assets
+        uses: actions/cache@v4
+        with:
+          path: public/pyodide
+          key: pyodide-${{ hashFiles('package-lock.json', 'schema/problem.schema.json') }}
+      - name: Restore Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ hashFiles('package-lock.json') }}
+      - run: npx playwright install --with-deps chromium
+      - run: npm run build
+      - run: npm run test:e2e
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with: { name: playwright-report, path: playwright-report, retention-days: 7 }
+
+  build:
+    name: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '${{ env.NODE_VERSION }}', cache: npm }
+      - run: npm ci
+      - name: Restore Pyodide assets
+        uses: actions/cache@v4
+        with:
+          path: public/pyodide
+          key: pyodide-${{ hashFiles('package-lock.json', 'schema/problem.schema.json') }}
+      - run: npm run build

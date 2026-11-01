@@ -1,0 +1,11 @@
+dist
+coverage
+public/pyodide
+node_modules
+.venv
+package-lock.json
+uv.lock
+playwright-report
+test-results
+src/types/problem.generated.ts
+problems/*.json

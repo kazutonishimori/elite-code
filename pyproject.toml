@@ -1,0 +1,34 @@
+[project]
+name = "elite-code-harness"
+version = "0.1.0"
+description = "Python test harness for Elite Code (runs in Pyodide and CPython)"
+requires-python = ">=3.14"
+dependencies = []
+
+[dependency-groups]
+dev = [
+  "pytest>=8.4",
+  "pytest-cov>=7.0",
+  "ruff>=0.13",
+  # Mirrors the packages a problem may request; versions track the Pyodide lock file.
+  "numpy>=2.4",
+  "pandas>=3.0",
+  "sortedcontainers>=2.4",
+]
+
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+testpaths = ["harness/tests"]
+addopts = "--cov=harness --cov-branch --cov-report=term-missing --cov-fail-under=90"
+
+[tool.coverage.run]
+omit = ["harness/tests/*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py314"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF"]
