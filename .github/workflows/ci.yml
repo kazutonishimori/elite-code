@@ -25,8 +25,8 @@ jobs:
       - run: npm ci
       - run: uv sync --frozen
       - run: npm run lint
-      - name: Generated types match the schema
-        run: npm run schema:types:check
+      - name: Generated types and guide examples match the schema
+        run: npm run schema:check
 
   typecheck:
     name: typecheck

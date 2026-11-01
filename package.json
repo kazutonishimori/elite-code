@@ -18,7 +18,6 @@
     "lint:fix": "eslint . --fix && prettier --write . && uv run ruff check --fix harness && uv run ruff format harness",
     "typecheck": "tsc -b --noEmit",
     "schema:types": "tsx scripts/gen-types.ts",
-    "schema:types:check": "tsx scripts/gen-types.ts --check",
     "test": "vitest run --project unit",
     "test:watch": "vitest --project unit",
     "test:coverage": "vitest run --project unit --coverage",
@@ -26,7 +25,9 @@
     "test:py": "uv run pytest",
     "test:e2e": "playwright test",
     "problem:validate": "tsx scripts/problem-validate.ts",
-    "problem:add": "tsx scripts/problem-add.ts"
+    "problem:add": "tsx scripts/problem-add.ts",
+    "schema:guide": "tsx scripts/sync-guide-examples.ts",
+    "schema:check": "tsx scripts/gen-types.ts --check && tsx scripts/sync-guide-examples.ts --check"
   },
   "dependencies": {
     "@monaco-editor/react": "^4.7.0",

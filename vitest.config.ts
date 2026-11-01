@@ -1,6 +1,6 @@
 import { defineConfig, mergeConfig } from 'vitest/config';
 
-import viteConfig from './vite.config';
+import viteConfig from './vite.config.ts';
 
 export default mergeConfig(
   viteConfig,
@@ -8,9 +8,9 @@ export default mergeConfig(
     test: {
       coverage: {
         provider: 'v8',
-        include: ['src/**/*.{ts,tsx}', 'scripts/**/*.ts'],
+        include: ['src/**/*.{ts,tsx}', 'scripts/lib/**/*.ts', 'build/**/*.ts'],
         exclude: [
-          'src/**/*.test.{ts,tsx}',
+          '**/*.test.{ts,tsx}',
           'src/test/**',
           'src/types/**',
           'src/main.tsx',
@@ -19,7 +19,6 @@ export default mergeConfig(
           'src/runner/worker/pyodide.worker.ts',
           'src/runner/browserWorkerFactory.ts',
           'src/lib/monaco.ts',
-          'scripts/pyodide-assets.ts',
         ],
         reporter: ['text-summary', 'html', 'json-summary'],
         thresholds: {
@@ -36,7 +35,7 @@ export default mergeConfig(
           extends: true,
           test: {
             name: 'unit',
-            include: ['src/**/*.test.{ts,tsx}', 'scripts/**/*.test.ts'],
+            include: ['src/**/*.test.{ts,tsx}', 'scripts/**/*.test.ts', 'build/**/*.test.ts'],
             environment: 'jsdom',
             setupFiles: ['src/test/setup.ts'],
             restoreMocks: true,

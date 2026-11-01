@@ -32,7 +32,7 @@ export default tseslint.config(
       'import-x/resolver-next': [
         createTypeScriptImportResolver({
           noWarnOnMultipleProjects: true,
-          project: ['tsconfig.app.json', 'tsconfig.node.json'],
+          project: ['tsconfig.app.json', 'tsconfig.node.json', 'tsconfig.test.json'],
         }),
       ],
     },
@@ -50,13 +50,17 @@ export default tseslint.config(
       'import-x/order': [
         'error',
         {
-          groups: ['builtin', 'external', 'internal', ['parent', 'sibling', 'index'], 'type'],
+          groups: ['builtin', 'external', 'internal', ['parent', 'sibling', 'index']],
           pathGroups: [{ pattern: '@/**', group: 'internal' }],
           'newlines-between': 'always',
           alphabetize: { order: 'asc', caseInsensitive: true },
         },
       ],
     },
+  },
+  {
+    files: ['**/*.test.{ts,tsx}', 'tests/**', 'e2e/**'],
+    rules: { '@typescript-eslint/no-non-null-assertion': 'off' },
   },
   {
     files: ['src/components/ui/**'],

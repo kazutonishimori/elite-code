@@ -1,0 +1,98 @@
+{
+  "missing-required": [
+    {
+      "path": "",
+      "rule": "required"
+    }
+  ],
+  "bad-id-pattern": [
+    {
+      "path": "/id",
+      "rule": "pattern"
+    }
+  ],
+  "unknown-property": [
+    {
+      "path": "",
+      "rule": "additionalProperties"
+    }
+  ],
+  "bad-difficulty": [
+    {
+      "path": "/difficulty",
+      "rule": "enum"
+    }
+  ],
+  "bad-tag": [
+    {
+      "path": "/tags/1",
+      "rule": "enum"
+    }
+  ],
+  "wrong-schema-version": [
+    {
+      "path": "/schemaVersion",
+      "rule": "const"
+    }
+  ],
+  "disallowed-package": [
+    {
+      "path": "/packages/0",
+      "rule": "enum"
+    }
+  ],
+  "standard-with-two-stages": [
+    {
+      "path": "/stages",
+      "rule": "maxItems"
+    }
+  ],
+  "simulation-with-two-stages": [
+    {
+      "path": "/stages",
+      "rule": "minItems"
+    }
+  ],
+  "too-few-hints": [
+    {
+      "path": "/stages/0/hints",
+      "rule": "minItems"
+    }
+  ],
+  "bad-test-name": [
+    {
+      "path": "/stages/0/visibleTests/0/name",
+      "rule": "pattern"
+    }
+  ],
+  "missing-complexity": [
+    {
+      "path": "/stages/0/solution",
+      "rule": "required"
+    }
+  ],
+  "duplicate-test-names": [
+    {
+      "path": "/stages/0/hiddenTests/0/name",
+      "rule": "unique-test-names"
+    }
+  ],
+  "test-name-mismatch": [
+    {
+      "path": "/stages/0/visibleTests/1/code",
+      "rule": "test-defines-function"
+    }
+  ],
+  "duplicate-stage-ids": [
+    {
+      "path": "/stages/2/id",
+      "rule": "unique-stage-ids"
+    }
+  ],
+  "not-json": [
+    {
+      "path": "",
+      "rule": "json-syntax"
+    }
+  ]
+}

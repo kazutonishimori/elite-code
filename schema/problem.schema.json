@@ -1,0 +1,374 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://elite-code.local/schema/problem.schema.json",
+  "title": "Problem",
+  "description": "One Elite Code practice problem. A problem is either a classic single-prompt coding problem (type \"standard\", exactly one stage) or a multi-stage interview simulation (type \"simulation\", 3-5 stages) where each stage extends the previous requirement. Solutions and tests are Python 3.14.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "id",
+    "title",
+    "type",
+    "difficulty",
+    "tags",
+    "summary",
+    "starterCode",
+    "estimatedMinutes",
+    "stages"
+  ],
+  "properties": {
+    "$schema": {
+      "description": "Optional pointer to this schema file, for editor autocompletion. Ignored by the app.",
+      "type": "string",
+      "maxLength": 300,
+      "examples": ["../schema/problem.schema.json"]
+    },
+    "schemaVersion": {
+      "description": "Version of the problem format this file follows. Must be exactly 1 for the current format.",
+      "const": 1
+    },
+    "id": {
+      "$ref": "#/$defs/slug",
+      "description": "Globally unique, stable identifier. Lowercase kebab-case. Also used as the file name (<id>.json).",
+      "examples": ["merge-intervals", "rate-limiter-simulation"]
+    },
+    "title": {
+      "description": "Human-readable title shown in the problem list.",
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 80,
+      "examples": ["Merge Intervals", "Rate Limiter"]
+    },
+    "type": {
+      "description": "\"standard\": one prompt, one stage. \"simulation\": an interview that evolves through 3-5 stages; the solver only sees the current stage and must keep earlier stages passing.",
+      "enum": ["standard", "simulation"]
+    },
+    "difficulty": {
+      "description": "Overall difficulty for a mid-to-senior engineer. For simulations, rate the final stage.",
+      "enum": ["easy", "medium", "hard"]
+    },
+    "tags": {
+      "description": "1-5 topic tags from the fixed vocabulary, most important first. Used for filtering and weakest-topic analytics.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/tag"
+      },
+      "minItems": 1,
+      "maxItems": 5,
+      "uniqueItems": true,
+      "examples": [["intervals", "sorting"]]
+    },
+    "summary": {
+      "description": "One or two plain-text sentences (no Markdown) shown in the problem list. Must not reveal the solution approach or future simulation stages.",
+      "type": "string",
+      "minLength": 20,
+      "maxLength": 300,
+      "examples": ["Merge all overlapping time ranges in a calendar export."]
+    },
+    "starterCode": {
+      "description": "Python code the editor starts with: the function or class signature(s) the tests call, with a docstring and a `pass` or `raise NotImplementedError` body. Must NOT pass the tests. For simulations, starter code covers only stage 1.",
+      "type": "string",
+      "minLength": 10,
+      "maxLength": 5000,
+      "examples": ["def merge(intervals: list[list[int]]) -> list[list[int]]:\n    pass\n"]
+    },
+    "packages": {
+      "description": "Third-party packages the solution or tests need. They are loaded before the code runs. Omit or leave empty for pure-Python problems (strongly preferred).",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/packageName"
+      },
+      "uniqueItems": true,
+      "maxItems": 3,
+      "default": []
+    },
+    "timeLimitSeconds": {
+      "description": "Wall-clock limit for one complete run of the solver's code plus every selected test, in the browser. Defaults to 5.",
+      "type": "number",
+      "minimum": 1,
+      "maximum": 30,
+      "default": 5
+    },
+    "estimatedMinutes": {
+      "description": "Realistic time for a strong candidate to finish the whole problem (all stages), in minutes.",
+      "type": "integer",
+      "minimum": 5,
+      "maximum": 180,
+      "examples": [20, 45]
+    },
+    "companies": {
+      "description": "Optional flavor: companies known to ask this kind of question. Free text.",
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 40
+      },
+      "maxItems": 10,
+      "uniqueItems": true
+    },
+    "topics": {
+      "description": "Optional flavor: free-form domain topics (e.g. \"payments\", \"observability\"). Unlike tags, not restricted to a vocabulary.",
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 40
+      },
+      "maxItems": 10,
+      "uniqueItems": true
+    },
+    "stages": {
+      "description": "Ordered stages. A standard problem has exactly one; a simulation has 3-5, revealed one at a time.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/stage"
+      },
+      "minItems": 1,
+      "maxItems": 5
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "const": "standard"
+          }
+        },
+        "required": ["type"]
+      },
+      "then": {
+        "type": "object",
+        "properties": {
+          "stages": {
+            "type": "array",
+            "maxItems": 1
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "const": "simulation"
+          }
+        },
+        "required": ["type"]
+      },
+      "then": {
+        "type": "object",
+        "properties": {
+          "stages": {
+            "type": "array",
+            "minItems": 3
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "slug": {
+      "title": "Slug",
+      "description": "Lowercase kebab-case identifier: letters, digits and single hyphens, starting with a letter.",
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*(-[a-z0-9]+)*$",
+      "minLength": 2,
+      "maxLength": 64
+    },
+    "tag": {
+      "title": "Tag",
+      "description": "Topic tag from the fixed vocabulary.",
+      "enum": [
+        "array",
+        "hash-map",
+        "string",
+        "string-parsing",
+        "two-pointers",
+        "sliding-window",
+        "prefix-sum",
+        "intervals",
+        "sorting",
+        "binary-search",
+        "stack",
+        "queue",
+        "heap",
+        "linked-list",
+        "tree",
+        "trie",
+        "graph",
+        "bfs",
+        "dfs",
+        "topological-sort",
+        "union-find",
+        "dynamic-programming",
+        "greedy",
+        "recursion",
+        "math",
+        "bit-manipulation",
+        "design",
+        "simulation",
+        "caching",
+        "concurrency",
+        "scheduling",
+        "time-series",
+        "data-processing",
+        "aggregation",
+        "joins",
+        "deduplication",
+        "pandas"
+      ]
+    },
+    "packageName": {
+      "title": "PackageName",
+      "description": "A package available to problems. Anything else is unavailable.",
+      "enum": ["numpy", "pandas", "sortedcontainers"]
+    },
+    "testName": {
+      "title": "TestName",
+      "description": "Test function name: starts with test_, then lowercase letters, digits and underscores. Unique across the whole problem.",
+      "type": "string",
+      "pattern": "^test_[a-z0-9_]+$",
+      "maxLength": 80
+    },
+    "testCase": {
+      "title": "TestCase",
+      "description": "One test: Python source defining a single zero-argument function named exactly `name`. It passes if it returns without raising. Use plain `assert actual == expected` statements.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "code"],
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/testName",
+          "examples": ["test_merges_overlapping_pair"]
+        },
+        "description": {
+          "description": "Optional one-line description of what the test checks, shown to the solver when the test is visible or fails.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200,
+          "examples": ["Touching intervals [1,2] and [2,3] merge into one."]
+        },
+        "code": {
+          "description": "Python source: `def <name>():` followed by an indented body. May start with imports. Runs after the solver's code in the same namespace, so it can call the solver's functions and classes directly.",
+          "type": "string",
+          "minLength": 10,
+          "maxLength": 20000,
+          "examples": [
+            "def test_merges_overlapping_pair():\n    assert merge([[1, 3], [2, 6]]) == [[1, 6]]\n"
+          ]
+        }
+      }
+    },
+    "hint": {
+      "title": "Hint",
+      "description": "A progressive hint (Markdown). The first nudges, the last nearly gives the approach away, but no hint contains full code.",
+      "type": "string",
+      "minLength": 10,
+      "maxLength": 1000
+    },
+    "solution": {
+      "title": "Solution",
+      "description": "Reference solution for a stage.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "explanation", "timeComplexity", "spaceComplexity"],
+      "properties": {
+        "code": {
+          "description": "Complete, runnable Python. For simulations it is cumulative: the whole program as it should look at the end of this stage, passing this stage's tests and every earlier stage's tests.",
+          "type": "string",
+          "minLength": 10,
+          "maxLength": 20000
+        },
+        "explanation": {
+          "description": "Markdown walkthrough of the approach, why it is correct, and (for simulations) what had to be refactored from the previous stage.",
+          "type": "string",
+          "minLength": 50,
+          "maxLength": 6000
+        },
+        "timeComplexity": {
+          "description": "Big-O time of the key operations, with variables defined.",
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 200,
+          "examples": ["O(n log n) for n intervals"]
+        },
+        "spaceComplexity": {
+          "description": "Big-O extra space, with variables defined.",
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 200,
+          "examples": ["O(n)"]
+        }
+      }
+    },
+    "stage": {
+      "title": "Stage",
+      "description": "One step of a problem. Standard problems have a single stage holding the whole prompt.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "title",
+        "requirement",
+        "visibleTests",
+        "hiddenTests",
+        "hints",
+        "solution"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/slug",
+          "description": "Stage identifier, unique within the problem.",
+          "examples": ["basic-limit", "per-user-limits"]
+        },
+        "title": {
+          "description": "Short stage title, e.g. \"Per-user limits\".",
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 80
+        },
+        "requirement": {
+          "description": "Markdown prompt for this stage, written as the interviewer speaking. Defines every function/class/method signature the tests call, input/output formats, and the rules. Include at least one worked example.",
+          "type": "string",
+          "minLength": 50,
+          "maxLength": 6000
+        },
+        "visibleTests": {
+          "description": "Tests the solver can read and run with Run. Cover the worked examples and one or two simple edge cases.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/testCase"
+          },
+          "minItems": 1,
+          "maxItems": 15
+        },
+        "hiddenTests": {
+          "description": "Tests only run on Submit. Cover edge cases, scale within the time limit, and shortcuts a naive solution would take.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/testCase"
+          },
+          "minItems": 1,
+          "maxItems": 30
+        },
+        "hints": {
+          "description": "2-3 ordered hints, revealed one at a time.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/hint"
+          },
+          "minItems": 2,
+          "maxItems": 3
+        },
+        "solution": {
+          "$ref": "#/$defs/solution"
+        }
+      }
+    }
+  }
+}

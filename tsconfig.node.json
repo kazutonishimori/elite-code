@@ -11,8 +11,11 @@
     "vitest.config.ts",
     "playwright.config.ts",
     "scripts",
+    "build",
     "e2e",
-    "tests",
-    "build"
-  ]
+    "src/core",
+    "src/runner",
+    "src/types"
+  ],
+  "exclude": ["**/*.test.ts", "src/runner/worker/pyodide.worker.ts"]
 }
