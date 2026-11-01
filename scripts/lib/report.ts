@@ -19,15 +19,16 @@ export function formatReport(report: CheckReport, cwd = process.cwd()): string {
   return lines.join('\n');
 }
 
-/** Duplicate ids across a set of validated files. */
+/** Duplicate ids among files in the same directory (a directory is one problem library). */
 export function duplicateIdErrors(reports: CheckReport[]): string[] {
   const seen = new Map<string, string>();
   const errors: string[] = [];
   for (const r of reports) {
     if (!r.id) continue;
-    const first = seen.get(r.id);
+    const key = `${path.dirname(path.resolve(r.file))}::${r.id}`;
+    const first = seen.get(key);
     if (first) errors.push(`id "${r.id}" is used by both ${first} and ${r.file}`);
-    else seen.set(r.id, r.file);
+    else seen.set(key, r.file);
   }
   return errors;
 }
